@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (toggled by the app shell on <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ══════════════════════════════════════════════════════════════════
+   GERALD HOLDINGS BRAND COLOUR SYSTEM
+   ══════════════════════════════════════════════════════════════════
+   Raw palette + semantic tokens. Semantic utilities resolve through
+   CSS custom properties so the `.dark` overrides re-theme every
+   `bg-brand-*`, `text-ai-*`, etc. usage automatically.
+
+   Hierarchy:  AZURE = brand / diagnostic core
+               VIOLET = AI / intelligence
+               GREEN = operational health
+               GOLD = premium / executive / finance
+*/
+@theme {
+  /* ── Raw Gerald palette ── */
+  --color-gerald-azure: #40bef0;
+  --color-gerald-azure-deep: #1c9ad0;
+  --color-gerald-azure-soft: #ddf5fd;
+
+  --color-gerald-violet: #ac78c2;
+  --color-gerald-violet-deep: #85509d;
+  --color-gerald-violet-soft: #f1e6f4;
+
+  --color-gerald-gold: #c2a328;
+  --color-gerald-gold-deep: #d5b63d;
+  --color-gerald-gold-soft: #f6f0d5;
+
+  --color-gerald-green: #76a63d;
+  --color-gerald-green-deep: #5d8d2e;
+  --color-gerald-green-soft: #e8f1db;
+
+  /* ── Semantic: brand (Azure) ── */
+  --color-brand: var(--color-gerald-azure);
+  --color-brand-hover: var(--color-gerald-azure-deep);
+  --color-brand-active: #1683b1;
+  --color-brand-soft: var(--color-gerald-azure-soft);
+  --color-brand-text: #0e76a3;
+
+  /* ── Semantic: AI (Violet) ── */
+  --color-ai: var(--color-gerald-violet);
+  --color-ai-hover: var(--color-gerald-violet-deep);
+  --color-ai-active: #6f3f87;
+  --color-ai-soft: var(--color-gerald-violet-soft);
+  --color-ai-text: #6c3d84;
+
+  /* ── Semantic: premium / executive (Gold) ── */
+  --color-premium: var(--color-gerald-gold);
+  --color-premium-hover: var(--color-gerald-gold-deep);
+  --color-premium-active: #a38b1e;
+  --color-premium-soft: var(--color-gerald-gold-soft);
+  --color-premium-text: #8a6f1b;
+
+  /* ── Semantic: operational health (Green) ── */
+  --color-operational: var(--color-gerald-green);
+  --color-operational-hover: var(--color-gerald-green-deep);
+  --color-operational-active: #4c7526;
+  --color-operational-soft: var(--color-gerald-green-soft);
+  --color-operational-text: #4c7426;
+}
+
+/* Dark-mode semantic overrides: soft tints become translucent dark
+   washes instead of pale pastels; text tokens lighten for contrast. */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-slate-200);
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-brand-soft: rgb(28 154 208 / 0.16);
+    --color-brand-text: #8cdcf9;
+    --color-ai-soft: rgb(133 80 157 / 0.22);
+    --color-ai-text: #d0b3dd;
+    --color-premium-soft: rgb(194 163 40 / 0.16);
+    --color-premium-text: #e3ce7a;
+    --color-operational-soft: rgb(93 141 46 / 0.18);
+    --color-operational-text: #b8d493;
+  }
+
+  body {
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* ─── Scrollbars ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184 / 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139 / 0.6);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slide-in-from-bottom {
+  from { transform: translateY(4px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes scan-line {
+  0% { top: 0%; }
+  100% { top: 96%; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-in-from-bottom 0.2s ease-out;
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}

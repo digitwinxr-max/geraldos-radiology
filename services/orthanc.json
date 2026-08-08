@@ -1,0 +1,15 @@
+{
+  "Name": "GeraldOS-PACS",
+  "StorageDirectory": "/tmp/orthancdb",
+  "HttpPort": 8042,
+  "DicomPort": 4242,
+  "AuthenticationEnabled": true,
+  "RegisteredUsers": { "orthanc": "orthanc" },
+  "RemoteAccessAllowed": true,
+  "SslEnabled": false,
+  "Plugins": [
+    "/usr/share/orthanc/plugins/libOrthancDicomWeb.so",
+    "/usr/share/orthanc/plugins/libServeFolders.so",
+    "/usr/share/orthanc/plugins/libModalityWorklists.so"
+  ]
+}

@@ -1,0 +1,117 @@
+# GeraldOS — Full approved-stack deployment bundle.
+# The Next.js app reads every endpoint from environment variables (see .env.example).
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app_db
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: geraldos
+      MINIO_ROOT_PASSWORD: geraldos-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  orthanc:
+    image: orthancteam/orthanc:latest
+    environment:
+      ORTHANC__NAME: GeraldOS-PACS
+      ORTHANC__DICOM_WEB__ENABLE: "true"
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: |-
+        {"orthanc": "orthanc"}
+    ports: ["8042:8042"]
+    volumes: [orthancdata:/var/lib/orthanc/db]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8042/system"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    environment:
+      KC_HOSTNAME: localhost
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports: ["8180:8080"]
+    volumes: [keycloakdata:/opt/keycloak/data]
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    ports: ["8090:8080"]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/app_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dicoogle:
+    image: bioinformatics-ua/dicoogle:latest
+    ports: ["8095:8080"]
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports: ["5678:5678"]
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      WEBHOOK_URL: http://localhost:5678/
+    volumes: [n8ndata:/home/node/.n8n]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  ohif:
+    image: ohif/app:latest
+    ports: ["3001:80"]
+
+  langgraph:
+    # LangGraph Platform self-hosted runtime (requires LANGSMITH_API_KEY).
+    # For local graphs: `langgraph dev` also exposes the same /ok + /threads API on :8123.
+    image: langchain/langgraph-api:latest
+    ports: ["8123:8000"]
+    environment:
+      REDIS_URI: redis://redis:6379
+      DATABASE_URI: postgres://postgres:postgres@postgres:5432/app_db
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+    depends_on:
+      - redis
+      - postgres
+
+volumes:
+  pgdata:
+  miniodata:
+  orthancdata:
+  keycloakdata:
+  n8ndata:

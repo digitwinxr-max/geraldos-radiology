@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env.local
+.env*.local
+.env.bak
+.env.*
+!.env.example
+
+# Freebuff desktop workspace database (binary — must never be scanned/committed)
+.freebuff/
+*.db
+*.db-wal
+*.db-shm
+
+# Test / build artifacts
+coverage/
+.driz-mig/
+drizzle-test.config.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
