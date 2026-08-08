@@ -427,12 +427,13 @@ async function fetchOrthancStudies(): Promise<OrthancStudyLite[]> {
     if (!res.ok) return [];
     const list = (await res.json()) as Record<string, { Value?: (string | { Alphabetic?: string })[] }>[];
     return list.map((study) => {
-      const rawName = study["00100010"]?.Value?.[0];
-      const patientName = typeof rawName === "string" ? rawName : (rawName as { Alphabetic?: string } | undefined)?.Alphabetic ?? null;
+      const asString = (v: string | { Alphabetic?: string } | undefined): string =>
+        typeof v === "string" ? v : (v as { Alphabetic?: string } | undefined)?.Alphabetic ?? "";
+      const patientName = asString(study["00100010"]?.Value?.[0]) || null;
       return {
-        studyInstanceUid: study["0020000D"]?.Value?.[0] ?? "",
+        studyInstanceUid: asString(study["0020000D"]?.Value?.[0]),
         // ModalitiesInStudy (0008,0061); fall back to Modality (0008,0060).
-        modalities: study["00080061"]?.Value?.[0] ?? study["00080060"]?.Value?.[0] ?? "",
+        modalities: asString(study["00080061"]?.Value?.[0]) || asString(study["00080060"]?.Value?.[0]),
         patientName,
       };
     }).filter((s) => s.studyInstanceUid);
