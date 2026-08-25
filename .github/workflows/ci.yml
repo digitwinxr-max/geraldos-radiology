@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values keep `next build` deterministic under NODE_ENV=production.
+      # The build prerenders client-component pages only, so no database is touched.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      AUTH_SECRET: ci-build-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:coverage
+      - run: npm run build
+
+  docker:
+    name: Docker image build & smoke test
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t geraldos:ci .
+      - name: Run container
+        run: |
+          docker run -d --network host --name geraldos \
+            -e NODE_ENV=production \
+            -e DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
+            -e AUTH_SECRET="$(openssl rand -base64 32)" \
+            geraldos:ci
+      - name: Smoke test /api/health and /api/metrics
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/health > /dev/null; then
+              echo "health: OK"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "health: still failing after 30 attempts"
+              docker logs geraldos
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -fsS http://localhost:3000/api/metrics > /dev/null
+          echo "metrics: OK"
