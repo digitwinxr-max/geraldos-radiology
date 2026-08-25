@@ -1,47 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { aiObservations, workflowStudies } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, count, type SQL } from "drizzle-orm";
 import { generateCandidates } from "@/lib/ai-review";
 import { recordAudit } from "@/lib/audit";
 import { publishEvent } from "@/lib/events";
 import { withAuth } from "@/lib/middleware-helpers";
 import { validateBody, createAiReviewSchema } from "@/lib/validation";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/ai-review?studyId=&orthancStudyId=&status=pending */
 export async function GET(request: NextRequest) {
   return withAuth(request, "ai-review.read", async () => {
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
+
     const studyId = request.nextUrl.searchParams.get("studyId") ?? undefined;
     const orthancStudyId = request.nextUrl.searchParams.get("orthancStudyId") ?? undefined;
     const status = request.nextUrl.searchParams.get("status") ?? undefined;
+
+    const conditions: SQL[] = [];
+    if (studyId) conditions.push(eq(aiObservations.studyId, studyId));
+    else if (orthancStudyId) conditions.push(eq(aiObservations.orthancStudyId, orthancStudyId));
+    else if (status) conditions.push(eq(aiObservations.status, status));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const opts = serviceOpts(parsed.data);
+
     try {
-      let rows;
-      if (studyId) {
-        rows = await db
+      const [rows, totalRow] = await Promise.all([
+        db
           .select()
           .from(aiObservations)
-          .where(eq(aiObservations.studyId, studyId))
-          .orderBy(desc(aiObservations.createdAt));
-      } else if (orthancStudyId) {
-        rows = await db
-          .select()
-          .from(aiObservations)
-          .where(eq(aiObservations.orthancStudyId, orthancStudyId))
-          .orderBy(desc(aiObservations.createdAt));
-      } else if (status) {
-        rows = await db
-          .select()
-          .from(aiObservations)
-          .where(eq(aiObservations.status, status))
+          .where(where)
           .orderBy(desc(aiObservations.createdAt))
-          .limit(100);
-      } else {
-        rows = await db.select().from(aiObservations).orderBy(desc(aiObservations.createdAt)).limit(100);
-      }
-      return NextResponse.json({ ok: true, observations: rows });
+          .limit(opts.limit)
+          .offset(opts.offset),
+        db.select({ count: count() }).from(aiObservations).where(where),
+      ]);
+      return NextResponse.json(listEnvelope(rows, totalRow[0]?.count ?? 0, parsed.data.page, parsed.data.pageSize));
     } catch {
       return internalError();
     }

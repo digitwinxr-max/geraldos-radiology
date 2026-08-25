@@ -6,28 +6,39 @@
 
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, count } from "drizzle-orm";
 import { publishEvent } from "@/lib/events";
+import type { ServiceListOpts } from "@/lib/list-query";
 
-export async function listNotifications(limit = 30) {
-  const rows = await db
-    .select()
-    .from(notifications)
-    .where(eq(notifications.read, false))
-    .orderBy(desc(notifications.createdAt))
-    .limit(limit);
-  const recent = await db
-    .select()
-    .from(notifications)
-    .orderBy(desc(notifications.createdAt))
-    .limit(limit);
-  const all = [...rows, ...recent.filter((r) => !rows.some((x) => x.id === r.id))];
-  const [unread] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(notifications)
-    .where(eq(notifications.read, false));
+export async function listNotifications(opts: ServiceListOpts) {
+  // Fetch enough recent rows to page the unread-first ordering in memory.
+  const window = opts.offset + opts.limit;
+  const [recent, unreadRows, unreadCountRow, totalRow] = await Promise.all([
+    db
+      .select()
+      .from(notifications)
+      .orderBy(desc(notifications.createdAt))
+      .limit(Math.min(200, Math.max(window, opts.limit))),
+    db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.read, false))
+      .orderBy(desc(notifications.createdAt))
+      .limit(Math.min(200, Math.max(window, opts.limit))),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(eq(notifications.read, false)),
+    db.select({ count: count() }).from(notifications),
+  ]);
 
-  return { notifications: all, unread: Number(unread.count) };
+  // Unread notifications surface first, then the rest in recency order.
+  const all = [...unreadRows, ...recent.filter((r) => !unreadRows.some((x) => x.id === r.id))];
+  return {
+    notifications: all.slice(opts.offset, opts.offset + opts.limit),
+    unread: Number(unreadCountRow[0]?.count ?? 0),
+    total: totalRow[0]?.count ?? 0,
+  };
 }
 
 export async function createNotification(input: typeof notifications.$inferInsert) {

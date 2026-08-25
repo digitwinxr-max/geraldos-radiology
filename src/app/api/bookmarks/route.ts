@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { studyBookmarks } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, count } from "drizzle-orm";
 import { withAuth } from "@/lib/middleware-helpers";
 import { validateBody, createBookmarkSchema } from "@/lib/validation";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
 import { recordAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -12,14 +13,25 @@ export const dynamic = "force-dynamic";
 /** GET /api/bookmarks?userId= — saved studies for the radiologist workspace. */
 export async function GET(request: NextRequest) {
   return withAuth(request, "imaging.read", async (user) => {
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
+
     const userId = request.nextUrl.searchParams.get("userId") ?? user.sub ?? "local-user";
+    const where = eq(studyBookmarks.userId, userId);
+    const opts = serviceOpts(parsed.data);
+
     try {
-      const bookmarks = await db
-        .select()
-        .from(studyBookmarks)
-        .where(eq(studyBookmarks.userId, userId))
-        .orderBy(desc(studyBookmarks.createdAt));
-      return NextResponse.json({ ok: true, bookmarks });
+      const [rows, totalRow] = await Promise.all([
+        db
+          .select()
+          .from(studyBookmarks)
+          .where(where)
+          .orderBy(desc(studyBookmarks.createdAt))
+          .limit(opts.limit)
+          .offset(opts.offset),
+        db.select({ count: count() }).from(studyBookmarks).where(where),
+      ]);
+      return NextResponse.json(listEnvelope(rows, totalRow[0]?.count ?? 0, parsed.data.page, parsed.data.pageSize));
     } catch {
       return internalError();
     }

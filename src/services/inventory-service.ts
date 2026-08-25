@@ -6,11 +6,16 @@
 
 import { db } from "@/db";
 import { inventoryItems, inventoryTransactions } from "@/db/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, count } from "drizzle-orm";
 import { publishEvent, EVENT_TYPES } from "@/lib/events";
+import type { ServiceListOpts } from "@/lib/list-query";
 
-export async function listInventory() {
-  return db.select().from(inventoryItems).orderBy(inventoryItems.category, inventoryItems.name);
+export async function listInventory(opts: ServiceListOpts) {
+  const [rows, totalRow] = await Promise.all([
+    db.select().from(inventoryItems).orderBy(inventoryItems.category, inventoryItems.name).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(inventoryItems),
+  ]);
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createInventoryItem(input: typeof inventoryItems.$inferInsert) {

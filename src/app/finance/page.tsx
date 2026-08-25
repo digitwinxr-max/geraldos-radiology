@@ -125,11 +125,11 @@ export default function FinancePage() {
 
   const fetchAll = useCallback(() => {
     fetch("/api/finance/analytics").then((r) => r.json()).then(setAnalytics).catch(() => {});
-    fetch("/api/invoices").then((r) => r.json()).then((d) => Array.isArray(d) && setInvoices(d)).catch(() => {});
-    fetch("/api/payments").then((r) => r.json()).then((d) => Array.isArray(d) && setPaymentsList(d)).catch(() => {});
-    fetch("/api/claims").then((r) => r.json()).then((d) => Array.isArray(d) && setClaims(d)).catch(() => {});
-    fetch("/api/tariffs").then((r) => r.json()).then((d) => Array.isArray(d) && setTariffList(d)).catch(() => {});
-    fetch("/api/patients").then((r) => r.json()).then((d) => Array.isArray(d) && setPatientsList(d)).catch(() => {});
+    fetch("/api/invoices").then((r) => r.json()).then((d) => setInvoices(d.data ?? [])).catch(() => {});
+    fetch("/api/payments").then((r) => r.json()).then((d) => setPaymentsList(d.data ?? [])).catch(() => {});
+    fetch("/api/claims").then((r) => r.json()).then((d) => setClaims(d.data ?? [])).catch(() => {});
+    fetch("/api/tariffs").then((r) => r.json()).then((d) => setTariffList(d.data ?? [])).catch(() => {});
+    fetch("/api/patients").then((r) => r.json()).then((d) => setPatientsList(d.data ?? [])).catch(() => {});
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);

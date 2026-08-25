@@ -7,39 +7,59 @@
 
 import { db } from "@/db";
 import { workflowStudies, patients, staff } from "@/db/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
 import { publishEvent, EVENT_TYPES } from "@/lib/events";
 import { recordAudit } from "@/lib/audit";
 import { transitionStudy, WORKFLOW_STAGES, stageLabel } from "@/lib/workflow";
+import { orderByDir, type ServiceListOpts } from "@/lib/list-query";
 
 export { transitionStudy, WORKFLOW_STAGES, stageLabel };
 
-export async function listWorkflowStudies(opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 100;
-  const rows = await db
+/** Sort allowlist for GET /api/workflow (kept in sync with the route). */
+const SORT_COLUMNS = {
+  createdAt: workflowStudies.createdAt,
+  priority: workflowStudies.priority,
+} as const;
+
+export async function listWorkflowStudies(opts: ServiceListOpts) {
+  const order = opts.sort
+    ? orderByDir(SORT_COLUMNS[opts.sort as keyof typeof SORT_COLUMNS], opts.dir)
+    : desc(workflowStudies.createdAt);
+
+  const base = db
     .select({
       id: workflowStudies.id,
-      patientId: workflowStudies.patientId,
-      patientName: sql<string>`concat(${patients.firstName}, ' ', ${patients.lastName})`,
       accessionNumber: workflowStudies.accessionNumber,
+      studyInstanceUid: workflowStudies.studyInstanceUid,
       modality: workflowStudies.modality,
       procedure: workflowStudies.procedure,
       bodyPart: workflowStudies.bodyPart,
       stage: workflowStudies.stage,
       priority: workflowStudies.priority,
-      radiologistId: workflowStudies.radiologistId,
-      studyInstanceUid: workflowStudies.studyInstanceUid,
       startedAt: workflowStudies.startedAt,
       completedAt: workflowStudies.completedAt,
       createdAt: workflowStudies.createdAt,
-      updatedAt: workflowStudies.updatedAt,
+      patientId: patients.id,
+      patientFirstName: patients.firstName,
+      patientLastName: patients.lastName,
+      patientMrn: patients.mrn,
+      radiologistId: staff.id,
+      radiologistFirstName: staff.firstName,
+      radiologistLastName: staff.lastName,
     })
     .from(workflowStudies)
     .leftJoin(patients, eq(workflowStudies.patientId, patients.id))
-    .orderBy(desc(workflowStudies.createdAt))
-    .limit(limit);
+    .leftJoin(staff, eq(workflowStudies.radiologistId, staff.id));
 
-  return rows;
+  const [rows, totalRow] = await Promise.all([
+    base.orderBy(order).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(workflowStudies),
+  ]);
+
+  return {
+    rows: rows.map((r) => ({ ...r, stageLabel: stageLabel(r.stage ?? "referral") })),
+    total: totalRow[0]?.count ?? 0,
+  };
 }
 
 export async function createWorkflowStudy(input: typeof workflowStudies.$inferInsert) {

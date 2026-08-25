@@ -117,9 +117,9 @@ export default function ReportingPage() {
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const fetchAll = useCallback(() => {
-    fetch("/api/workflow").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setStudies(d); }).catch(() => {});
-    fetch("/api/reports").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setReports(d); }).catch(() => {});
-    fetch("/api/reports/templates").then((r) => r.json()).then((d) => { if (d.ok) setTemplates(d.templates ?? []); }).catch(() => {});
+    fetch("/api/workflow").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setStudies(d.data); }).catch(() => {});
+    fetch("/api/reports").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setReports(d.data); }).catch(() => {});
+    fetch("/api/reports/templates").then((r) => r.json()).then((d) => setTemplates(d.data ?? [])).catch(() => {});
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -137,7 +137,7 @@ export default function ReportingPage() {
     setShowVersionHistory(false);
     fetch(`/api/reports/${report.id}/versions`)
       .then((r) => r.json())
-      .then((d) => { if (d.ok) setVersions(d.versions ?? []); })
+      .then((d) => setVersions(d.data ?? []))
       .catch(() => {});
   }, []);
 

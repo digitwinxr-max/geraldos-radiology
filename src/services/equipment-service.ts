@@ -6,10 +6,15 @@
 
 import { db } from "@/db";
 import { equipment, maintenanceRecords } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
+import type { ServiceListOpts } from "@/lib/list-query";
 
-export async function listEquipment() {
-  return db.select().from(equipment).orderBy(equipment.name);
+export async function listEquipment(opts: ServiceListOpts) {
+  const [rows, totalRow] = await Promise.all([
+    db.select().from(equipment).orderBy(equipment.name).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(equipment),
+  ]);
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createEquipment(input: typeof equipment.$inferInsert) {

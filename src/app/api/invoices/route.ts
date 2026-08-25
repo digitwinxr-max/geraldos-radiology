@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { invoices, invoiceLineItems, patients } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { invoices, invoiceLineItems } from "@/db/schema";
 import { withAuth } from "@/lib/middleware-helpers";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
+import { listInvoices } from "@/services/finance-service";
 import { generateInvoiceNumber } from "@/lib/finance";
 import { recordAudit } from "@/lib/audit";
 
@@ -12,31 +13,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   return withAuth(request, "finance.read", async () => {
-    try {
-      const result = await db
-        .select({
-          id: invoices.id,
-          invoiceNumber: invoices.invoiceNumber,
-          patientId: invoices.patientId,
-          billingType: invoices.billingType,
-          insuranceProvider: invoices.insuranceProvider,
-          subtotal: invoices.subtotal,
-          taxAmount: invoices.taxAmount,
-          totalAmount: invoices.totalAmount,
-          amountPaid: invoices.amountPaid,
-          status: invoices.status,
-          issueDate: invoices.issueDate,
-          dueDate: invoices.dueDate,
-          createdAt: invoices.createdAt,
-          patientFirstName: patients.firstName,
-          patientLastName: patients.lastName,
-          patientMrn: patients.mrn,
-        })
-        .from(invoices)
-        .leftJoin(patients, eq(invoices.patientId, patients.id))
-        .orderBy(desc(invoices.createdAt));
+    const parsed = parseListQuery(request, { sorts: ["issueDate", "totalAmount"] });
+    if (!parsed.success) return parsed.error;
 
-      return NextResponse.json({ data: result });
+    try {
+      const { rows, total } = await listInvoices(serviceOpts(parsed.data));
+      return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
     } catch {
       return internalError();
     }

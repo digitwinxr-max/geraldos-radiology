@@ -47,7 +47,7 @@ export default function EquipmentPage() {
   const fetchData = useCallback(() => {
     fetch("/api/equipment")
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setItems(d); })
+      .then((d) => { if (Array.isArray(d.data)) setItems(d.data); })
       .catch(() => {});
   }, []);
 

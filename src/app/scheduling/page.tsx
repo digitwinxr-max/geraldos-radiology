@@ -42,8 +42,8 @@ export default function SchedulingPage() {
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
 
   const fetchData = useCallback(() => {
-    fetch("/api/appointments").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setAppointments(d); }).catch(() => {});
-    fetch("/api/equipment").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setEquipmentList(d); }).catch(() => {});
+    fetch("/api/appointments").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setAppointments(d.data); }).catch(() => {});
+    fetch("/api/equipment").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setEquipmentList(d.data); }).catch(() => {});
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);

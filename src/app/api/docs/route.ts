@@ -16,7 +16,14 @@ export async function GET() {
       description:
         "AI-Native Diagnostic Imaging Operations Platform — API reference.\n\n" +
         "All endpoints return JSON. Authentication is managed via Keycloak OIDC (when configured) " +
-        "or local dev sessions. AI actions flow through the Decision Engine and are never auto-executed.",
+        "or local dev sessions. AI actions flow through the Decision Engine and are never auto-executed.\n\n" +
+        "## List contract\n\n" +
+        "Every row-list endpoint accepts the standard list parameters (see components.parameters) and returns " +
+        "`{ data: [...], meta: { page, pageSize, total, totalPages } }`. Unknown sort fields return 400 " +
+        "VALIDATION_FAILED. Sort allowlists: /patients (createdAt, lastName), /appointments (scheduledDate, createdAt), " +
+        "/workflow (createdAt, priority), /invoices (issueDate, totalAmount), /reports (createdAt). " +
+        "Other list endpoints reject the sort parameter. Errors always follow " +
+        "`{ error: { code, message, details? } }`.",
       version: "2.0.0",
       contact: { name: "Gerald Holdings", url: "https://gerald.co.za" },
     },
@@ -49,10 +56,12 @@ export async function GET() {
       "/events": {
         get: {
           summary: "List platform events",
+          description: "Standard list envelope over the event log.",
           tags: ["Events"],
           parameters: [
+            { $ref: "#/components/parameters/PageParam" },
+            { $ref: "#/components/parameters/PageSizeParam" },
             { name: "type", in: "query", schema: { type: "string" }, description: "Filter by event type (e.g. study.uploaded)" },
-            { name: "limit", in: "query", schema: { type: "integer", default: 50 } },
           ],
           responses: { 200: { description: "Event list" } },
         },
@@ -298,7 +307,16 @@ export async function GET() {
         },
       },
       "/notifications": {
-        get: { summary: "List notifications (unread first)", tags: ["Notifications"], parameters: [{ name: "limit", in: "query", schema: { type: "integer", default: 30 } }], responses: { 200: { description: "Notification list with unread count" } } },
+        get: {
+          summary: "List notifications (unread first)",
+          description: "Standard list envelope plus an extra top-level `unread` count.",
+          tags: ["Notifications"],
+          parameters: [
+            { $ref: "#/components/parameters/PageParam" },
+            { $ref: "#/components/parameters/PageSizeParam" },
+          ],
+          responses: { 200: { description: "Notification list with unread count" } },
+        },
         post: { summary: "Create a notification", tags: ["Notifications"], responses: { 201: { description: "Notification created" } } },
       },
       "/notifications/{id}": {
@@ -406,6 +424,34 @@ export async function GET() {
             },
           },
           responses: { 200: { description: "Agent reply" } },
+        },
+      },
+    },
+    components: {
+      parameters: {
+        PageParam: {
+          name: "page",
+          in: "query",
+          schema: { type: "integer", minimum: 1, default: 1 },
+          description: "1-based page number (list contract).",
+        },
+        PageSizeParam: {
+          name: "pageSize",
+          in: "query",
+          schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+          description: "Rows per page (list contract).",
+        },
+        SortParam: {
+          name: "sort",
+          in: "query",
+          schema: { type: "string" },
+          description: "Sort column — only allowed where an allowlist is defined (see info.description); unknown values return 400.",
+        },
+        DirParam: {
+          name: "dir",
+          in: "query",
+          schema: { type: "string", enum: ["asc", "desc"], default: "desc" },
+          description: "Sort direction (list contract).",
         },
       },
     },

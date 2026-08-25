@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listEvents, publishEvent, EVENT_TYPES } from "@/lib/events";
+import { listEvents, countEvents, publishEvent, EVENT_TYPES } from "@/lib/events";
 import { withAuth } from "@/lib/middleware-helpers";
 import { apiError, internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope } from "@/lib/list-query";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/events?type=study.uploaded&limit=50 — recent platform events. */
+/** GET /api/events?type=study.uploaded&page=1&pageSize=50 — recent platform events. */
 export async function GET(request: NextRequest) {
   return withAuth(request, "workflow.read", async () => {
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
     const type = request.nextUrl.searchParams.get("type") ?? undefined;
-    const limit = Math.min(200, Number(request.nextUrl.searchParams.get("limit") ?? 50));
     try {
-      const events = await listEvents(limit, type);
-      return NextResponse.json({ ok: true, events });
+      const { page, pageSize, offset } = parsed.data;
+      const [events, total] = await Promise.all([listEvents(pageSize, type, offset), countEvents(type)]);
+      return NextResponse.json(listEnvelope(events, total, page, pageSize));
     } catch {
       return internalError();
     }

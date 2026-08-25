@@ -64,14 +64,14 @@ export default function ReceptionPage() {
     const params = search ? `?search=${encodeURIComponent(search)}` : "";
     fetch(`/api/patients${params}`)
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setPatients(d); })
+      .then((d) => { if (Array.isArray(d.data)) setPatients(d.data); })
       .catch(() => {});
   }, [search]);
 
   const fetchAppointments = useCallback(() => {
     fetch("/api/appointments")
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setAppointments(d); })
+      .then((d) => { if (Array.isArray(d.data)) setAppointments(d.data); })
       .catch(() => {});
   }, []);
 

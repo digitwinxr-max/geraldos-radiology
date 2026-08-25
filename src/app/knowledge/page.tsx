@@ -94,7 +94,7 @@ export default function KnowledgePage() {
     if (q) params.set("q", q);
     const res = await fetch(`/api/knowledge?${params.toString()}`);
     const data = await res.json();
-    if (data.ok) setDocuments(data.documents ?? []);
+    if (res.ok) setDocuments(data.data ?? []);
   }, [category, query]);
 
   useEffect(() => { fetchDocs(); }, [fetchDocs]);

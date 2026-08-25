@@ -343,7 +343,7 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     try {
       const res = await fetch("/api/reports/templates");
       const d = await res.json();
-      if (d.ok) setTemplates(d.templates ?? []);
+      if (res.ok) setTemplates(d.data ?? []);
     } catch {
       /* ignore */
     }
@@ -351,9 +351,9 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
 
   const loadEvents = useCallback(async () => {
     try {
-      const res = await fetch("/api/events?limit=60");
+      const res = await fetch("/api/events?pageSize=60");
       const d = await res.json();
-      if (d.ok) setEvents(d.events ?? []);
+      if (res.ok) setEvents(d.data ?? []);
     } catch {
       /* ignore */
     }
@@ -361,9 +361,9 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
 
   const loadNotifications = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications?limit=40");
+      const res = await fetch("/api/notifications?pageSize=40");
       const d = await res.json();
-      if (d.ok) setNotifications(d.notifications ?? []);
+      if (res.ok) setNotifications(d.data ?? []);
     } catch {
       /* ignore */
     }
@@ -383,7 +383,7 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     try {
       const res = await fetch("/api/bookmarks");
       const d = await res.json();
-      if (d.ok) setBookmarks(d.bookmarks ?? []);
+      if (res.ok) setBookmarks(d.data ?? []);
     } catch {
       /* ignore */
     }
@@ -402,14 +402,14 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
       if (filters.location) params.set("location", filters.location);
       if (filters.priority) params.set("priority", filters.priority);
       const [res, allRes] = await Promise.all([
-        fetch(`/api/worklist?${params.toString()}`),
+        fetch(`/api/worklist?${params.toString()}&pageSize=200`),
         // Unfiltered dataset powers the view counters (stable across view switches).
-        fetch("/api/worklist?view=all"),
+        fetch("/api/worklist?view=all&pageSize=200"),
       ]);
       const d = await res.json();
       const da = await allRes.json();
-      if (d.ok) setEntries(d.entries ?? []);
-      if (da.ok) setAllEntries(da.entries ?? []);
+      if (res.ok) setEntries(d.data ?? []);
+      if (allRes.ok) setAllEntries(da.data ?? []);
     } catch {
       /* offline */
     } finally {
@@ -517,8 +517,8 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
           fetch(`/api/ai-review?studyId=${entry.id}`).then((r) => r.json()),
         ]);
         if (fresh()) {
-          if (ar.ok) setAnnotations(ar.annotations ?? []);
-          if (or.ok) setObservations(or.observations ?? []);
+          setAnnotations(ar.data ?? []);
+          setObservations(or.data ?? []);
         }
       } catch {
         /* ignore */
@@ -526,8 +526,8 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
 
       // Report: find existing for this study, otherwise create a draft.
       try {
-        const rr = await fetch("/api/reports").then((r) => r.json());
-        const list = Array.isArray(rr) ? rr : [];
+        const rr = await fetch("/api/reports?pageSize=200").then((r) => r.json());
+        const list = Array.isArray(rr.data) ? rr.data : [];
         const existing = list.find((r: ReportRow) => r.studyId === entry.id);
         if (fresh()) {
           if (existing) {
@@ -587,7 +587,7 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
       });
       publish(tool === "length" ? "measurement.created" : "annotation.added", "study", selected.id, { tool, label });
       const res = await fetch(`/api/annotations?studyId=${selected.id}`).then((r) => r.json());
-      if (res.ok) setAnnotations(res.annotations ?? []);
+      setAnnotations(res.data ?? []);
     },
     [selected, studyDetail, publish]
   );
@@ -635,7 +635,7 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     });
     publish("ai.review_completed", "study", selected.id, { modality: selected.modality });
     const res = await fetch(`/api/ai-review?studyId=${selected.id}`).then((r) => r.json());
-    if (res.ok) setObservations(res.observations ?? []);
+    setObservations(res.data ?? []);
   }, [selected, studyDetail, publish]);
 
   const reviewObservation = useCallback(

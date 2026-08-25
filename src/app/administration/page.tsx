@@ -79,10 +79,10 @@ export default function AdministrationPage() {
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
 
   const fetchAll = useCallback(() => {
-    fetch("/api/employees").then((r) => r.json()).then((d) => Array.isArray(d) && setEmployees(d)).catch(() => {});
-    fetch("/api/branches").then((r) => r.json()).then((d) => Array.isArray(d) && setBranchesList(d)).catch(() => {});
-    fetch("/api/roles").then((r) => r.json()).then((d) => Array.isArray(d) && setRolesList(d)).catch(() => {});
-    fetch("/api/staff").then((r) => r.json()).then((d) => Array.isArray(d) && setStaffList(d)).catch(() => {});
+    fetch("/api/employees").then((r) => r.json()).then((d) => setEmployees(d.data ?? [])).catch(() => {});
+    fetch("/api/branches").then((r) => r.json()).then((d) => setBranchesList(d.data ?? [])).catch(() => {});
+    fetch("/api/roles").then((r) => r.json()).then((d) => setRolesList(d.data ?? [])).catch(() => {});
+    fetch("/api/staff").then((r) => r.json()).then((d) => setStaffList(d.data ?? [])).catch(() => {});
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);

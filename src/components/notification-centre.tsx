@@ -32,10 +32,10 @@ export function NotificationCentre() {
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/notifications?limit=30");
+      const res = await fetch("/api/notifications?pageSize=30");
       const data = await res.json();
-      if (data.ok) {
-        setItems(data.notifications ?? []);
+      if (res.ok) {
+        setItems(data.data ?? []);
         setUnread(Number(data.unread ?? 0));
       }
     } catch {

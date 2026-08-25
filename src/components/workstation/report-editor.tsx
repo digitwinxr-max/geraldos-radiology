@@ -128,7 +128,7 @@ export function ReportEditor() {
     try {
       const res = await fetch(`/api/reports/${report.id}/versions`);
       const data = await res.json();
-      if (data.ok) setVersions(data.versions ?? []);
+      if (res.ok) setVersions(data.data ?? []);
     } catch {
       /* ignore */
     } finally {
@@ -157,8 +157,8 @@ export function ReportEditor() {
     try {
       const res = await fetch(`/api/reports?patientId=${selected.patientId}`);
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setPreviousReports(data.filter((r: ReportRow) => r.id !== report?.id && (r.status === "signed" || r.status === "released")));
+      if (Array.isArray(data.data)) {
+        setPreviousReports(data.data.filter((r: ReportRow) => r.id !== report?.id && (r.status === "signed" || r.status === "released")));
       }
     } catch {
       /* ignore */

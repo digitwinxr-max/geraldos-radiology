@@ -10,11 +10,15 @@ vi.mock("@/db", () => ({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           orderBy: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([]),
+            limit: vi.fn().mockReturnValue({
+              offset: vi.fn().mockResolvedValue([]),
+            }),
           }),
         }),
         orderBy: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([]),
+          limit: vi.fn().mockReturnValue({
+            offset: vi.fn().mockResolvedValue([]),
+          }),
         }),
         groupBy: vi.fn().mockReturnValue({
           orderBy: vi.fn().mockResolvedValue([]),

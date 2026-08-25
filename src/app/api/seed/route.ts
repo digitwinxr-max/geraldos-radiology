@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
+import { internalError } from "@/lib/api-error";
 import {
   patients,
   referrals,
@@ -398,9 +399,8 @@ export async function POST() {
         orthancStudiesLinked: claimedUids.size,
       },
     });
-  } catch (error) {
-    console.error("Seed error:", error);
-    return NextResponse.json({ error: "Failed to seed database", details: String(error) }, { status: 500 });
+  } catch {
+    return internalError();
   }
 }
 

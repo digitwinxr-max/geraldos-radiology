@@ -12,7 +12,7 @@
 
 import { db } from "@/db";
 import { aiRecommendations } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, count } from "drizzle-orm";
 import { recordAudit } from "@/lib/audit";
 import { publishEvent } from "@/lib/events";
 
@@ -235,10 +235,12 @@ export async function executeDecision(id: string, executedBy: string) {
 }
 
 /** List decisions with optional status filter. */
-export async function listDecisions(status?: string) {
-  let q = db.select().from(aiRecommendations).orderBy(desc(aiRecommendations.createdAt)).limit(100);
-  if (status) {
-    q = db.select().from(aiRecommendations).where(eq(aiRecommendations.status, status)).orderBy(desc(aiRecommendations.createdAt)).limit(100) as typeof q;
-  }
-  return q;
+export async function listDecisions(status: string | undefined, opts: { limit: number; offset: number }) {
+  const where = status ? eq(aiRecommendations.status, status) : undefined;
+  const base = db.select().from(aiRecommendations);
+  const [rows, totalRow] = await Promise.all([
+    (where ? base.where(where) : base).orderBy(desc(aiRecommendations.createdAt)).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(aiRecommendations).where(where),
+  ]);
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }

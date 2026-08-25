@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { insuranceClaims, invoices, patients } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { insuranceClaims } from "@/db/schema";
 import { withAuth } from "@/lib/middleware-helpers";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
+import { listClaims } from "@/services/finance-service";
 import { generateClaimNumber } from "@/lib/finance";
 import { recordAudit } from "@/lib/audit";
 
@@ -12,30 +13,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   return withAuth(request, "finance.read", async () => {
-    try {
-      const result = await db
-        .select({
-          id: insuranceClaims.id,
-          claimNumber: insuranceClaims.claimNumber,
-          medicalAid: insuranceClaims.medicalAid,
-          membershipNumber: insuranceClaims.membershipNumber,
-          amountClaimed: insuranceClaims.amountClaimed,
-          amountApproved: insuranceClaims.amountApproved,
-          status: insuranceClaims.status,
-          submittedAt: insuranceClaims.submittedAt,
-          respondedAt: insuranceClaims.respondedAt,
-          rejectionReason: insuranceClaims.rejectionReason,
-          invoiceNumber: invoices.invoiceNumber,
-          patientFirstName: patients.firstName,
-          patientLastName: patients.lastName,
-          patientMrn: patients.mrn,
-        })
-        .from(insuranceClaims)
-        .leftJoin(invoices, eq(insuranceClaims.invoiceId, invoices.id))
-        .leftJoin(patients, eq(insuranceClaims.patientId, patients.id))
-        .orderBy(desc(insuranceClaims.submittedAt));
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
 
-      return NextResponse.json({ data: result });
+    try {
+      const { rows, total } = await listClaims(serviceOpts(parsed.data));
+      return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
     } catch {
       return internalError();
     }

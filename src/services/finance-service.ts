@@ -11,18 +11,28 @@ import {
 } from "@/db/schema";
 import { eq, desc, sql, count } from "drizzle-orm";
 import { recordAudit } from "@/lib/audit";
+import { orderByDir, type ServiceListOpts } from "@/lib/list-query";
 
 // ─── Invoices ───
 
-export async function listInvoices(opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 100;
-  return db
+/** Sort allowlist for GET /api/invoices (kept in sync with the route). */
+const INVOICE_SORT_COLUMNS = {
+  issueDate: invoices.issueDate,
+  totalAmount: invoices.totalAmount,
+} as const;
+
+export async function listInvoices(opts: ServiceListOpts) {
+  const order = opts.sort
+    ? orderByDir(INVOICE_SORT_COLUMNS[opts.sort as keyof typeof INVOICE_SORT_COLUMNS], opts.dir)
+    : desc(invoices.createdAt);
+
+  const base = db
     .select({
       id: invoices.id,
       invoiceNumber: invoices.invoiceNumber,
       patientId: invoices.patientId,
-      patientName: sql<string>`concat(${patients.firstName}, ' ', ${patients.lastName})`,
       billingType: invoices.billingType,
+      insuranceProvider: invoices.insuranceProvider,
       subtotal: invoices.subtotal,
       taxAmount: invoices.taxAmount,
       totalAmount: invoices.totalAmount,
@@ -31,11 +41,19 @@ export async function listInvoices(opts: { limit?: number } = {}) {
       issueDate: invoices.issueDate,
       dueDate: invoices.dueDate,
       createdAt: invoices.createdAt,
+      patientFirstName: patients.firstName,
+      patientLastName: patients.lastName,
+      patientMrn: patients.mrn,
     })
     .from(invoices)
-    .leftJoin(patients, eq(invoices.patientId, patients.id))
-    .orderBy(desc(invoices.createdAt))
-    .limit(limit);
+    .leftJoin(patients, eq(invoices.patientId, patients.id));
+
+  const [rows, totalRow] = await Promise.all([
+    base.orderBy(order).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(invoices),
+  ]);
+
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createInvoice(input: typeof invoices.$inferInsert) {
@@ -54,9 +72,31 @@ export async function getInvoiceLineItems(invoiceId: string) {
 
 // ─── Payments ───
 
-export async function listPayments(opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 100;
-  return db.select().from(payments).orderBy(desc(payments.receivedAt)).limit(limit);
+export async function listPayments(opts: ServiceListOpts) {
+  const base = db
+    .select({
+      id: payments.id,
+      receiptNumber: payments.receiptNumber,
+      amount: payments.amount,
+      method: payments.method,
+      reference: payments.reference,
+      receivedBy: payments.receivedBy,
+      receivedAt: payments.receivedAt,
+      invoiceNumber: invoices.invoiceNumber,
+      patientFirstName: patients.firstName,
+      patientLastName: patients.lastName,
+      patientMrn: patients.mrn,
+    })
+    .from(payments)
+    .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
+    .leftJoin(patients, eq(payments.patientId, patients.id));
+
+  const [rows, totalRow] = await Promise.all([
+    base.orderBy(desc(payments.receivedAt)).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(payments),
+  ]);
+
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createPayment(input: typeof payments.$inferInsert) {
@@ -84,9 +124,34 @@ export async function createPayment(input: typeof payments.$inferInsert) {
 
 // ─── Insurance Claims ───
 
-export async function listClaims(opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 100;
-  return db.select().from(insuranceClaims).orderBy(desc(insuranceClaims.createdAt)).limit(limit);
+export async function listClaims(opts: ServiceListOpts) {
+  const base = db
+    .select({
+      id: insuranceClaims.id,
+      claimNumber: insuranceClaims.claimNumber,
+      medicalAid: insuranceClaims.medicalAid,
+      membershipNumber: insuranceClaims.membershipNumber,
+      amountClaimed: insuranceClaims.amountClaimed,
+      amountApproved: insuranceClaims.amountApproved,
+      status: insuranceClaims.status,
+      submittedAt: insuranceClaims.submittedAt,
+      respondedAt: insuranceClaims.respondedAt,
+      rejectionReason: insuranceClaims.rejectionReason,
+      invoiceNumber: invoices.invoiceNumber,
+      patientFirstName: patients.firstName,
+      patientLastName: patients.lastName,
+      patientMrn: patients.mrn,
+    })
+    .from(insuranceClaims)
+    .leftJoin(invoices, eq(insuranceClaims.invoiceId, invoices.id))
+    .leftJoin(patients, eq(insuranceClaims.patientId, patients.id));
+
+  const [rows, totalRow] = await Promise.all([
+    base.orderBy(desc(insuranceClaims.submittedAt)).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(insuranceClaims),
+  ]);
+
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createClaim(input: typeof insuranceClaims.$inferInsert) {
@@ -110,8 +175,12 @@ export async function updateClaim(id: string, updates: Partial<typeof insuranceC
 
 // ─── Tariffs ───
 
-export async function listTariffs() {
-  return db.select().from(tariffs).orderBy(tariffs.code);
+export async function listTariffs(opts: ServiceListOpts) {
+  const [rows, totalRow] = await Promise.all([
+    db.select().from(tariffs).orderBy(tariffs.code).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(tariffs),
+  ]);
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createTariff(input: typeof tariffs.$inferInsert) {
@@ -121,9 +190,12 @@ export async function createTariff(input: typeof tariffs.$inferInsert) {
 
 // ─── Expenses ───
 
-export async function listExpenses(opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 100;
-  return db.select().from(expenses).orderBy(desc(expenses.incurredDate)).limit(limit);
+export async function listExpenses(opts: ServiceListOpts) {
+  const [rows, totalRow] = await Promise.all([
+    db.select().from(expenses).orderBy(desc(expenses.incurredDate)).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(expenses),
+  ]);
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createExpense(input: typeof expenses.$inferInsert) {

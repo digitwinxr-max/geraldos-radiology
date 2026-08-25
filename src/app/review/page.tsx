@@ -58,7 +58,7 @@ export default function AiReviewPage() {
     if (filter !== "all") params.set("status", filter);
     const res = await fetch(`/api/ai-review?${params.toString()}`);
     const data = await res.json();
-    if (data.ok) setObservations(data.observations ?? []);
+    if (res.ok) setObservations(data.data ?? []);
     setLoading(false);
   }, [filter]);
 

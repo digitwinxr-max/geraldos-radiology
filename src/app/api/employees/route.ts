@@ -1,39 +1,22 @@
 import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { employeeRecords, staff, branches } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { employeeRecords } from "@/db/schema";
 import { withAuth } from "@/lib/middleware-helpers";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, serviceOpts, listEnvelope } from "@/lib/list-query";
+import * as staffService from "@/services/staff-service";
 import { generateEmployeeNumber } from "@/lib/finance";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   return withAuth(request, "administration.read", async () => {
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
     try {
-      const result = await db
-        .select({
-          id: employeeRecords.id,
-          employeeNumber: employeeRecords.employeeNumber,
-          department: employeeRecords.department,
-          employmentType: employeeRecords.employmentType,
-          startDate: employeeRecords.startDate,
-          monthlySalary: employeeRecords.monthlySalary,
-          hourlyRate: employeeRecords.hourlyRate,
-          status: employeeRecords.status,
-          staffFirstName: staff.firstName,
-          staffLastName: staff.lastName,
-          staffRole: staff.role,
-          staffEmail: staff.email,
-          branchName: branches.name,
-        })
-        .from(employeeRecords)
-        .leftJoin(staff, eq(employeeRecords.staffId, staff.id))
-        .leftJoin(branches, eq(employeeRecords.branchId, branches.id))
-        .orderBy(desc(employeeRecords.createdAt));
-
-      return NextResponse.json({ data: result });
+      const { rows, total } = await staffService.listEmployees(serviceOpts(parsed.data));
+      return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
     } catch {
       return internalError();
     }

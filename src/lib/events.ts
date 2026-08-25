@@ -9,7 +9,7 @@
 
 import { db } from "@/db";
 import { eventLog } from "@/db/schema";
-import { desc, eq, sql } from "drizzle-orm";
+import { count, desc, eq, sql } from "drizzle-orm";
 import { integrationConfig } from "@/lib/integrations";
 
 export const EVENT_STREAM = "geraldos:events";
@@ -131,7 +131,7 @@ export async function publishEvent(input: PublishEventInput): Promise<void> {
 }
 
 /** Read the tail of the event stream (most recent first). */
-export async function listEvents(limit = 50, type?: string): Promise<{
+export async function listEvents(limit = 50, type?: string, offset = 0): Promise<{
   id: number;
   eventType: string;
   aggregate: string;
@@ -141,9 +141,16 @@ export async function listEvents(limit = 50, type?: string): Promise<{
   occurredAt: Date;
 }[]> {
   const rows = type
-    ? await db.select().from(eventLog).where(eq(eventLog.eventType, type)).orderBy(desc(eventLog.id)).limit(limit)
-    : await db.select().from(eventLog).orderBy(desc(eventLog.id)).limit(limit);
+    ? await db.select().from(eventLog).where(eq(eventLog.eventType, type)).orderBy(desc(eventLog.id)).limit(limit).offset(offset)
+    : await db.select().from(eventLog).orderBy(desc(eventLog.id)).limit(limit).offset(offset);
   return rows.map((r) => ({ ...r, payload: (r.payload ?? null) as Record<string, unknown> | null }));
+}
+
+/** Total number of persisted events, optionally filtered by type. */
+export async function countEvents(type?: string): Promise<number> {
+  const base = db.select({ count: count() }).from(eventLog);
+  const rows = type ? await base.where(eq(eventLog.eventType, type)) : await base;
+  return rows[0]?.count ?? 0;
 }
 
 /** Count events grouped by type (for the command centre activity feed). */

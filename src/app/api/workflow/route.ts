@@ -1,52 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { workflowStudies, patients, staff } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { workflowStudies } from "@/db/schema";
 import { generateAccessionNumber } from "@/lib/utils";
 import { recordAudit } from "@/lib/audit";
 import { publishEvent, EVENT_TYPES } from "@/lib/events";
-import { stageLabel } from "@/lib/workflow";
 import { withAuth } from "@/lib/middleware-helpers";
 import { validateBody, createStudySchema } from "@/lib/validation";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
+import { listWorkflowStudies } from "@/services/workflow-service";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/workflow — all studies with patient/radiologist context + stage label. */
 export async function GET(request: NextRequest) {
   return withAuth(request, "workflow.read", async () => {
-    try {
-      const result = await db
-        .select({
-          id: workflowStudies.id,
-          accessionNumber: workflowStudies.accessionNumber,
-          studyInstanceUid: workflowStudies.studyInstanceUid,
-          modality: workflowStudies.modality,
-          procedure: workflowStudies.procedure,
-          bodyPart: workflowStudies.bodyPart,
-          stage: workflowStudies.stage,
-          priority: workflowStudies.priority,
-          startedAt: workflowStudies.startedAt,
-          completedAt: workflowStudies.completedAt,
-          createdAt: workflowStudies.createdAt,
-          patientId: patients.id,
-          patientFirstName: patients.firstName,
-          patientLastName: patients.lastName,
-          patientMrn: patients.mrn,
-          radiologistId: staff.id,
-          radiologistFirstName: staff.firstName,
-          radiologistLastName: staff.lastName,
-        })
-        .from(workflowStudies)
-        .leftJoin(patients, eq(workflowStudies.patientId, patients.id))
-        .leftJoin(staff, eq(workflowStudies.radiologistId, staff.id))
-        .orderBy(desc(workflowStudies.createdAt));
+    const parsed = parseListQuery(request, { sorts: ["createdAt", "priority"] });
+    if (!parsed.success) return parsed.error;
 
-      return NextResponse.json(
-        result.map((r) => ({ ...r, stageLabel: stageLabel(r.stage ?? "referral") })),
-      );
-    } catch (error) {
-      console.error("workflow GET failed", error);
+    try {
+      const { rows, total } = await listWorkflowStudies(serviceOpts(parsed.data));
+      return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
+    } catch {
       return internalError();
     }
   });
@@ -104,8 +79,7 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json({ ok: true, study }, { status: 201 });
-    } catch (error) {
-      console.error("workflow POST failed", error);
+    } catch {
       return internalError();
     }
   });

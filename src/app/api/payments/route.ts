@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { payments, invoices, patients } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { payments, invoices } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { withAuth } from "@/lib/middleware-helpers";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
+import { listPayments } from "@/services/finance-service";
 import { generateReceiptNumber } from "@/lib/finance";
 import { recordAudit } from "@/lib/audit";
 
@@ -12,27 +14,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   return withAuth(request, "finance.read", async () => {
-    try {
-      const result = await db
-        .select({
-          id: payments.id,
-          receiptNumber: payments.receiptNumber,
-          amount: payments.amount,
-          method: payments.method,
-          reference: payments.reference,
-          receivedBy: payments.receivedBy,
-          receivedAt: payments.receivedAt,
-          invoiceNumber: invoices.invoiceNumber,
-          patientFirstName: patients.firstName,
-          patientLastName: patients.lastName,
-          patientMrn: patients.mrn,
-        })
-        .from(payments)
-        .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
-        .leftJoin(patients, eq(payments.patientId, patients.id))
-        .orderBy(desc(payments.receivedAt));
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
 
-      return NextResponse.json({ data: result });
+    try {
+      const { rows, total } = await listPayments(serviceOpts(parsed.data));
+      return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
     } catch {
       return internalError();
     }

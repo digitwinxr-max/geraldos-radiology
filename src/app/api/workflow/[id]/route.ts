@@ -158,8 +158,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         details: { updates },
       });
       return NextResponse.json({ ok: true, study: updated, transitioned: false });
-    } catch (error) {
-      console.error("workflow PATCH failed", error);
+    } catch {
       return internalError();
     }
   });

@@ -75,9 +75,9 @@ export default function WorkflowPage() {
   const fetchStudies = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/workflow");
+      const res = await fetch("/api/workflow?pageSize=200");
       const d = await res.json();
-      if (Array.isArray(d)) setStudies(d);
+      if (Array.isArray(d.data)) setStudies(d.data);
     } catch {
       /* ignore */
     } finally {

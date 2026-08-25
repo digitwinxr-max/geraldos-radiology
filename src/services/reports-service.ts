@@ -6,20 +6,32 @@
  */
 
 import { db } from "@/db";
-import { reports, patients, workflowStudies, reportVersions } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { reports, patients, staff, reportVersions } from "@/db/schema";
+import { eq, desc, count } from "drizzle-orm";
 import { publishEvent, EVENT_TYPES } from "@/lib/events";
 import { recordAudit } from "@/lib/audit";
+import { orderByDir, type ServiceListOpts } from "@/lib/list-query";
 
-export async function listReports(opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 100;
-  const rows = await db
+/** Sort allowlist for GET /api/reports (kept in sync with the route). */
+const SORT_COLUMNS = {
+  createdAt: reports.createdAt,
+} as const;
+
+export interface ListReportsOpts extends ServiceListOpts {
+  patientId?: string;
+}
+
+export async function listReports(opts: ListReportsOpts) {
+  const order = opts.sort
+    ? orderByDir(SORT_COLUMNS[opts.sort as keyof typeof SORT_COLUMNS], opts.dir)
+    : desc(reports.createdAt);
+  const where = opts.patientId ? eq(reports.patientId, opts.patientId) : undefined;
+
+  const base = db
     .select({
       id: reports.id,
       studyId: reports.studyId,
       patientId: reports.patientId,
-      patientName: sql<string>`concat(${patients.firstName}, ' ', ${patients.lastName})`,
-      radiologistId: reports.radiologistId,
       templateName: reports.templateName,
       findings: reports.findings,
       impression: reports.impression,
@@ -27,14 +39,23 @@ export async function listReports(opts: { limit?: number } = {}) {
       status: reports.status,
       signedAt: reports.signedAt,
       createdAt: reports.createdAt,
-      updatedAt: reports.updatedAt,
+      patientFirstName: patients.firstName,
+      patientLastName: patients.lastName,
+      patientMrn: patients.mrn,
+      radiologistFirstName: staff.firstName,
+      radiologistLastName: staff.lastName,
     })
     .from(reports)
     .leftJoin(patients, eq(reports.patientId, patients.id))
-    .orderBy(desc(reports.createdAt))
-    .limit(limit);
+    .leftJoin(staff, eq(reports.radiologistId, staff.id))
+    .where(where);
 
-  return rows;
+  const [rows, totalRow] = await Promise.all([
+    base.orderBy(order).limit(opts.limit).offset(opts.offset),
+    db.select({ count: count() }).from(reports).where(where),
+  ]);
+
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createReport(input: typeof reports.$inferInsert) {

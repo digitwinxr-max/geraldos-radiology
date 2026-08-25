@@ -4,6 +4,7 @@ import { workflowStudies, patients, staff, appointments, referrals, equipment } 
 import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
 import { withAuth } from "@/lib/middleware-helpers";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, listEnvelope } from "@/lib/list-query";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   return withAuth(request, "workflow.read", async () => {
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
     const sp = request.nextUrl.searchParams;
     const view = sp.get("view") ?? "all";
     const q = (sp.get("q") ?? "").trim().toLowerCase();
@@ -111,7 +114,9 @@ export async function GET(request: NextRequest) {
       const rank: Record<string, number> = { emergency: 0, stat: 1, urgent: 2, routine: 3, undefined: 4 };
       rows.sort((a, b) => (rank[a.priority ?? "undefined"] ?? 4) - (rank[b.priority ?? "undefined"] ?? 4));
 
-      return NextResponse.json({ ok: true, entries: rows });
+      // In-memory paging over the priority-ordered result set.
+      const { page, pageSize, offset } = parsed.data;
+      return NextResponse.json(listEnvelope(rows.slice(offset, offset + pageSize), rows.length, page, pageSize));
     } catch {
       return internalError();
     }

@@ -6,34 +6,58 @@
 
 import { db } from "@/db";
 import { appointments, patients, equipment, staff } from "@/db/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
 import { publishEvent, EVENT_TYPES } from "@/lib/events";
 import { recordAudit } from "@/lib/audit";
+import { orderByDir, type ServiceListOpts } from "@/lib/list-query";
 
-export async function listAppointments(opts: { limit?: number } = {}) {
-  const limit = opts.limit ?? 100;
-  const rows = await db
+/** Sort allowlist for GET /api/appointments (kept in sync with the route). */
+const SORT_COLUMNS = {
+  scheduledDate: appointments.scheduledDate,
+  createdAt: appointments.createdAt,
+} as const;
+
+export async function listAppointments(opts: ServiceListOpts) {
+  const order = opts.sort
+    ? orderByDir(SORT_COLUMNS[opts.sort as keyof typeof SORT_COLUMNS], opts.dir)
+    : desc(appointments.scheduledDate);
+
+  const base = db
     .select({
       id: appointments.id,
-      patientId: appointments.patientId,
-      patientName: sql<string>`concat(${patients.firstName}, ' ', ${patients.lastName})`,
-      modality: appointments.modality,
-      procedure: appointments.procedure,
       scheduledDate: appointments.scheduledDate,
       scheduledTime: appointments.scheduledTime,
       duration: appointments.duration,
+      modality: appointments.modality,
+      procedure: appointments.procedure,
       priority: appointments.priority,
       status: appointments.status,
-      radiographerId: appointments.radiographerId,
-      equipmentId: appointments.equipmentId,
       checkedIn: appointments.checkedIn,
+      checkedInAt: appointments.checkedInAt,
+      notes: appointments.notes,
+      patientFirstName: patients.firstName,
+      patientLastName: patients.lastName,
+      patientMrn: patients.mrn,
+      equipmentName: equipment.name,
+      radiographerFirstName: staff.firstName,
+      radiographerLastName: staff.lastName,
     })
     .from(appointments)
     .leftJoin(patients, eq(appointments.patientId, patients.id))
-    .orderBy(desc(appointments.scheduledDate), desc(appointments.scheduledTime))
-    .limit(limit);
+    .leftJoin(equipment, eq(appointments.equipmentId, equipment.id))
+    .leftJoin(staff, eq(appointments.radiographerId, staff.id));
 
-  return rows;
+  const [rows, totalRow] = await Promise.all([
+    opts.sort
+      ? base.orderBy(order).limit(opts.limit).offset(opts.offset)
+      : base
+          .orderBy(desc(appointments.scheduledDate), appointments.scheduledTime)
+          .limit(opts.limit)
+          .offset(opts.offset),
+    db.select({ count: count() }).from(appointments),
+  ]);
+
+  return { rows, total: totalRow[0]?.count ?? 0 };
 }
 
 export async function createAppointment(input: typeof appointments.$inferInsert) {

@@ -127,9 +127,9 @@ export default function CommandCentrePage() {
       .then((r) => r.json())
       .then((d) => { if (d.ok) { setSnap(d); setLastUpdated(new Date()); } })
       .catch(() => {});
-    fetch("/api/events?limit=40")
+    fetch("/api/events?pageSize=40")
       .then((r) => r.json())
-      .then((d) => { if (d.ok) setEvents(d.events ?? []); })
+      .then((d) => setEvents(d.data ?? []))
       .catch(() => {});
   }, []);
 

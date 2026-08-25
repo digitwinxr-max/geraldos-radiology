@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listDecisions, proposeDecision } from "@/lib/decision-engine";
+import { internalError, validationFailed } from "@/lib/api-error";
+import { parseListQuery, serviceOpts, listEnvelope } from "@/lib/list-query";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/decisions?status=validated — decisions through the engine. */
 export async function GET(request: NextRequest) {
+  const parsed = parseListQuery(request);
+  if (!parsed.success) return parsed.error;
   const status = request.nextUrl.searchParams.get("status") ?? undefined;
   try {
-    const decisions = await listDecisions(status);
-    return NextResponse.json({ ok: true, decisions });
-  } catch (error) {
-    return NextResponse.json({ ok: false, error: "failed to load decisions", detail: String(error) }, { status: 500 });
+    const { rows, total } = await listDecisions(status, serviceOpts(parsed.data));
+    return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
+  } catch {
+    return internalError();
   }
 }
 
@@ -18,7 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body?.agent || !body?.recommendation) {
-    return NextResponse.json({ error: "agent and recommendation are required" }, { status: 400 });
+    return validationFailed([{ message: "agent and recommendation are required" }]);
   }
   try {
     const decision = await proposeDecision({
@@ -32,7 +36,7 @@ export async function POST(request: NextRequest) {
       requestedBy: body.requestedBy ?? "system-agent",
     });
     return NextResponse.json({ ok: true, decision }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "failed to propose decision", detail: String(error) }, { status: 500 });
+  } catch {
+    return internalError();
   }
 }

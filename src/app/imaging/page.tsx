@@ -132,7 +132,7 @@ export default function ImagingPage() {
   // ── Data ──
   const fetchAll = useCallback(() => {
     fetch("/api/integrations/client-config").then((r) => r.json()).then(setClientConfig).catch(() => {});
-    fetch("/api/workflow").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setLocalStudies(d); }).catch(() => {});
+    fetch("/api/workflow").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setLocalStudies(d.data); }).catch(() => {});
   }, []);
 
   const fetchPacs = useCallback(() => {
@@ -189,11 +189,11 @@ export default function ImagingPage() {
         .catch(() => {});
     }
     // Bookmarks + annotations + observations for this study
-    fetch(`/api/annotations?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setAnnotations(d.annotations ?? [])).catch(() => {});
-    fetch(`/api/bookmarks`).then((r) => r.json()).then((d) => setBookmarks(d.bookmarks ?? [])).catch(() => {});
+    fetch(`/api/annotations?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setAnnotations(d.data ?? [])).catch(() => {});
+    fetch(`/api/bookmarks`).then((r) => r.json()).then((d) => setBookmarks(d.data ?? [])).catch(() => {});
     fetch(`/api/ai-review?orthancStudyId=${selectedStudy.orthancId}`)
       .then((r) => r.json())
-      .then((d) => setObservations(d.observations ?? []))
+      .then((d) => setObservations(d.data ?? []))
       .catch(() => {});
   }, [selectedStudy?.orthancId, studyDetail?.study.patientId]);
 
@@ -250,7 +250,7 @@ export default function ImagingPage() {
         body: JSON.stringify({ orthancStudyId: selectedStudy.orthancId, label: `Bookmarked ${selectedStudy.patientName ?? "study"}`, userId: "local-user" }),
       });
     }
-    fetch("/api/bookmarks").then((r) => r.json()).then((d) => setBookmarks(d.bookmarks ?? [])).catch(() => {});
+    fetch("/api/bookmarks").then((r) => r.json()).then((d) => setBookmarks(d.data ?? [])).catch(() => {});
   };
 
   const saveAnnotation = async () => {
@@ -269,7 +269,7 @@ export default function ImagingPage() {
     });
     setNewAnnotation("");
     setAnnotationTool(null);
-    fetch(`/api/annotations?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setAnnotations(d.annotations ?? [])).catch(() => {});
+    fetch(`/api/annotations?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setAnnotations(d.data ?? [])).catch(() => {});
   };
 
   const deleteAnnotation = async (id: string) => {
@@ -284,7 +284,7 @@ export default function ImagingPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orthancStudyId: selectedStudy.orthancId, modality: studyDetail.study.modalities.split("/")[0].trim() || "X-Ray" }),
     });
-    fetch(`/api/ai-review?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setObservations(d.observations ?? [])).catch(() => {});
+    fetch(`/api/ai-review?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setObservations(d.data ?? [])).catch(() => {});
   };
 
   const reviewObservation = async (id: string, status: "accepted" | "rejected") => {

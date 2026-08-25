@@ -3,16 +3,21 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/middleware-helpers";
 import { validateBody, createNotificationSchema } from "@/lib/validation";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, serviceOpts, listEnvelope } from "@/lib/list-query";
 import * as notificationService from "@/services/notifications-service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   return withAuth(request, "notifications.read", async () => {
+    const parsed = parseListQuery(request, { defaultPageSize: 30 });
+    if (!parsed.success) return parsed.error;
     try {
-      const limit = Math.min(100, Number(request.nextUrl.searchParams.get("limit") ?? 30));
-      const result = await notificationService.listNotifications(limit);
-      return NextResponse.json({ ok: true, ...result });
+      const { notifications, unread, total } = await notificationService.listNotifications(serviceOpts(parsed.data));
+      return NextResponse.json({
+        ...listEnvelope(notifications, total, parsed.data.page, parsed.data.pageSize),
+        unread,
+      });
     } catch {
       return internalError();
     }

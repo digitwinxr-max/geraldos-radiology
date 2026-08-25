@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { roles } from "@/db/schema";
 import { withAuth } from "@/lib/middleware-helpers";
 import { internalError } from "@/lib/api-error";
+import { parseListQuery, serviceOpts, listEnvelope } from "@/lib/list-query";
+import * as staffService from "@/services/staff-service";
 
 export const dynamic = "force-dynamic";
 
@@ -27,11 +29,18 @@ function normalizePermissions(value: unknown): string[] {
 
 export async function GET(request: NextRequest) {
   return withAuth(request, "administration.read", async () => {
+    const parsed = parseListQuery(request);
+    if (!parsed.success) return parsed.error;
     try {
-      const result = await db.select().from(roles).orderBy(roles.name);
-      return NextResponse.json({
-        data: result.map((r) => ({ ...r, permissions: normalizePermissions(r.permissions) })),
-      });
+      const { rows, total } = await staffService.listRoles(serviceOpts(parsed.data));
+      return NextResponse.json(
+        listEnvelope(
+          rows.map((r) => ({ ...r, permissions: normalizePermissions(r.permissions) })),
+          total,
+          parsed.data.page,
+          parsed.data.pageSize
+        )
+      );
     } catch {
       return internalError();
     }
