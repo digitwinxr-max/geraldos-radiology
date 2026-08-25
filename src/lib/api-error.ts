@@ -51,3 +51,9 @@ export function validationFailed(issues: unknown): NextResponse<ApiErrorBody> {
 export function internalError(): NextResponse<ApiErrorBody> {
   return apiError("INTERNAL_ERROR", "An unexpected error occurred", 500);
 }
+
+export function rateLimited(retryAfterSec: number): NextResponse<ApiErrorBody> {
+  const res = apiError("RATE_LIMITED", "Too many requests — please slow down", 429);
+  res.headers.set("Retry-After", String(Math.max(1, Math.ceil(retryAfterSec))));
+  return res;
+}

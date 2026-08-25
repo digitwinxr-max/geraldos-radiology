@@ -11,6 +11,7 @@
 import { NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken, type SessionUser } from "@/lib/auth/session";
 import { unauthorized, forbidden } from "@/lib/api-error";
+import { checkCsrf } from "@/lib/csrf";
 
 // ─── Role → Permission map ───
 
@@ -104,11 +105,17 @@ type AuthResult =
  * Verify the session cookie and check that the authenticated user holds the
  * required permission. Returns the user on success, or a NextResponse (401/403)
  * on failure — ready to return directly from the route handler.
+ *
+ * Mutating requests are first validated against the strict Origin/Referer
+ * CSRF check so every withAuth mutation is same-origin by construction.
  */
 export async function requirePermission(
   request: NextRequest,
   permission: string,
 ): Promise<AuthResult> {
+  const csrf = checkCsrf(request);
+  if (csrf) return { ok: false, response: csrf };
+
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token) {
     return { ok: false, response: unauthorized() };

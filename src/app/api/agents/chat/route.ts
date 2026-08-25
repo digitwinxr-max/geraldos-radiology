@@ -3,7 +3,8 @@ import { integrationConfig } from "@/lib/integrations";
 import { AGENT_MAP, AGENTS, handleAgentRequest } from "@/lib/agents";
 import { recordAudit } from "@/lib/audit";
 import { withAuth } from "@/lib/middleware-helpers";
-import { apiError, internalError } from "@/lib/api-error";
+import { apiError, internalError, rateLimited } from "@/lib/api-error";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,11 @@ async function runOnLangGraph(agentId: string, message: string): Promise<string>
 
 /** POST /api/agents/chat { agent: "reporting", message: "..." } */
 export async function POST(request: NextRequest) {
-  return withAuth(request, "ai-review.write", async () => {
+  return withAuth(request, "ai-review.write", async (user) => {
+    // Keyed by the authenticated user so one heavy consumer cannot starve others.
+    const rl = await checkRateLimit("agents:chat", request, { limit: 20, windowSec: 60 }, user.sub || undefined);
+    if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+
     let body: { agent?: string; message?: string };
     try {
       body = (await request.json()) as { agent?: string; message?: string };

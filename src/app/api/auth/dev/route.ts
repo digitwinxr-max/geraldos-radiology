@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSessionToken, SESSION_COOKIE, secureCookieOptions } from "@/lib/auth/session";
 import { keycloakConfigured } from "@/lib/auth/oidc";
 import { recordAudit } from "@/lib/audit";
+import { env } from "@/lib/env";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { rateLimited } from "@/lib/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +13,10 @@ export const dynamic = "force-dynamic";
  * wired up (or when DEV_AUTH=true). Keeps the platform demoable in degraded mode.
  */
 export async function GET(request: NextRequest) {
-  const isDevEnvironment = process.env.NODE_ENV !== "production";
-  const allowDev = isDevEnvironment && (!keycloakConfigured() || process.env.DEV_AUTH === "true");
+  const rl = await checkRateLimit("auth:dev", request, { limit: 5, windowSec: 60 });
+  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+
+  const allowDev = !env.isProduction && (!keycloakConfigured() || env.devAuthEnabled);
   if (!allowDev) {
     return NextResponse.json(
       { error: { code: "FORBIDDEN", message: "Dev authentication is not available in this environment" } },

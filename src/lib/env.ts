@@ -61,6 +61,10 @@ export const env = {
   get isProduction(): boolean {
     return isProduction();
   },
+  /** Opt-in dev administrator sign-in (development only; see /api/auth/dev). */
+  get devAuthEnabled(): boolean {
+    return process.env.DEV_AUTH === "true";
+  },
   get databaseUrl(): string {
     return resolveEnv("DATABASE_URL");
   },

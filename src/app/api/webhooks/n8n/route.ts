@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordAudit } from "@/lib/audit";
-import { apiError } from "@/lib/api-error";
+import { apiError, rateLimited } from "@/lib/api-error";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,9 @@ export const dynamic = "force-dynamic";
  * Authentication is handled by the webhook secret or network-level controls.
  */
 export async function POST(request: NextRequest) {
+  const rl = await checkRateLimit("webhooks:n8n", request, { limit: 60, windowSec: 60 });
+  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

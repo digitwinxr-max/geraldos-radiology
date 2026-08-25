@@ -2,6 +2,10 @@
  * GeraldOS Integration Layer
  * Central configuration and client factories for the approved stack:
  * Keycloak, Orthanc, OHIF, Dicoogle, HAPI FHIR, n8n, LangGraph, MinIO, Redis.
+ *
+ * Secrets audit: alongside `src/lib/env.ts`, this module is the only
+ * sanctioned reader of `process.env` — integration config is resolved once
+ * at module load and consumed everywhere else via `integrationConfig`.
  */
 
 // ─── Central configuration (server-side only; secrets never reach the browser) ───

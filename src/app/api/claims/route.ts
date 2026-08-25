@@ -8,6 +8,7 @@ import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
 import { listClaims } from "@/services/finance-service";
 import { generateClaimNumber } from "@/lib/finance";
 import { recordAudit } from "@/lib/audit";
+import { integrationConfig } from "@/lib/integrations";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
 
       // Best-effort n8n automation trigger
       try {
-        const base = process.env.N8N_WEBHOOK_BASE || (process.env.N8N_URL ? `${process.env.N8N_URL}/webhook` : "");
+        const base = integrationConfig.n8n.webhookBase || (integrationConfig.n8n.url ? `${integrationConfig.n8n.url}/webhook` : "");
         if (base) {
           await fetch(`${base}/insurance-claim-submitted`, {
             method: "POST",

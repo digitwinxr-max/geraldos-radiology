@@ -19,6 +19,7 @@ vi.mock("@/lib/audit", () => ({
 
 import { recordAudit } from "@/lib/audit";
 import { createSessionToken } from "@/lib/auth/session";
+import { resetRateLimitsForTesting } from "@/lib/rate-limit";
 import {
   discoverOidc,
   exchangeCodeForTokens,
@@ -32,6 +33,7 @@ import { GET as callbackGet } from "@/app/api/auth/callback/route";
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
+  resetRateLimitsForTesting();
 });
 afterEach(() => vi.unstubAllEnvs());
 

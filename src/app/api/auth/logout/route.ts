@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { discoverOidc, keycloakConfigured } from "@/lib/auth/oidc";
 import { integrationConfig } from "@/lib/integrations";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { rateLimited } from "@/lib/api-error";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const rl = await checkRateLimit("auth:logout", request, { limit: 30, windowSec: 60 });
+  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+
   const origin = request.nextUrl.origin;
   const res = NextResponse.redirect(new URL("/login?signed_out=1", origin));
   res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });

@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { discoverOidc, buildAuthorizationUrl, keycloakConfigured } from "@/lib/auth/oidc";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { rateLimited } from "@/lib/api-error";
 import { v4 as uuid } from "uuid";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const rl = await checkRateLimit("auth:login", request, { limit: 10, windowSec: 60 });
+  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+
   if (!keycloakConfigured()) {
     return NextResponse.redirect(new URL("/login?error=keycloak_not_configured", request.nextUrl.origin));
   }

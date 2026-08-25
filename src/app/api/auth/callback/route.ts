@@ -7,10 +7,15 @@ import {
 } from "@/lib/auth/oidc";
 import { createSessionToken, SESSION_COOKIE, secureCookieOptions } from "@/lib/auth/session";
 import { recordAudit } from "@/lib/audit";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { rateLimited } from "@/lib/api-error";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const rl = await checkRateLimit("auth:callback", request, { limit: 20, windowSec: 60 });
+  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+
   const origin = request.nextUrl.origin;
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");

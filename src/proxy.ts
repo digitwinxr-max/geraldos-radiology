@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
+import { env } from "@/lib/env";
 
 // ─── Public routes that never require authentication ───
 
@@ -38,7 +39,7 @@ export async function proxy(request: NextRequest) {
 
   // When Keycloak is not configured, run in degraded mode so the platform
   // remains usable while identity services are being provisioned.
-  if (!process.env.KEYCLOAK_URL) {
+  if (!env.keycloakUrl) {
     return NextResponse.next();
   }
 

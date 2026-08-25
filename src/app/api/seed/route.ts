@@ -1,6 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { internalError } from "@/lib/api-error";
+import { forbidden, internalError, rateLimited } from "@/lib/api-error";
+import { env } from "@/lib/env";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { integrationConfig } from "@/lib/integrations";
 import {
   patients,
   referrals,
@@ -50,7 +53,14 @@ const MEDICAL_AIDS = [
   "MMI Botswana",
 ] as const;
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // Destructive demo tooling: blocked entirely in production, rate limited elsewhere.
+  if (env.isProduction) {
+    return forbidden("Database seeding is not available in production");
+  }
+  const rl = await checkRateLimit("seed", request, { limit: 5, windowSec: 60 });
+  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+
   // Clean slate so re-seeding always yields exactly one consistent dataset.
   // Children first to satisfy foreign keys; each delete is isolated so a
   // missing table never aborts the seed.
@@ -416,9 +426,9 @@ interface OrthancStudyLite {
  */
 async function fetchOrthancStudies(): Promise<OrthancStudyLite[]> {
   try {
-    const base = process.env.ORTHANC_URL ?? "http://localhost:8042";
-    const user = process.env.ORTHANC_USERNAME ?? "orthanc";
-    const pass = process.env.ORTHANC_PASSWORD ?? "orthanc";
+    const base = integrationConfig.orthanc.url || "http://localhost:8042";
+    const user = integrationConfig.orthanc.username || "orthanc";
+    const pass = integrationConfig.orthanc.password || "orthanc";
     const auth = "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
     const res = await fetch(`${base}/dicom-web/studies`, {
       headers: { Authorization: auth, Accept: "application/dicom+json" },
