@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 import {
   assessTechnicalQuality,
@@ -63,6 +63,10 @@ describe("AI Review Assistant", () => {
   });
 
   describe("generateCandidates", () => {
+    // Candidate generation is randomised; pin Math.random where a specific
+    // outcome is asserted so the suite never flakes.
+    afterEach(() => vi.restoreAllMocks());
+
     it("should generate candidates for X-Ray", () => {
       const candidates = generateCandidates({ modality: "X-Ray" });
       expect(candidates.length).toBeGreaterThanOrEqual(2);
@@ -83,16 +87,11 @@ describe("AI Review Assistant", () => {
     });
 
     it("should include a critical candidate for high confidence findings", () => {
-      // Run multiple times to check for critical candidates
-      let hasCritical = false;
-      for (let i = 0; i < 10; i++) {
-        const candidates = generateCandidates({ modality: "CT" });
-        if (candidates.some((c) => c.category === "critical")) {
-          hasCritical = true;
-          break;
-        }
-      }
-      expect(hasCritical).toBe(true);
+      // Finding confidence is 55 + floor(random * 30); a high roll (>= ~0.84)
+      // pushes it to 80+ which the generator labels "critical".
+      vi.spyOn(Math, "random").mockReturnValue(0.99);
+      const candidates = generateCandidates({ modality: "CT" });
+      expect(candidates.some((c) => c.category === "critical")).toBe(true);
     });
 
     it("should always include a technical quality candidate", () => {
