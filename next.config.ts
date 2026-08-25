@@ -1,4 +1,14 @@
 import type { NextConfig } from "next";
+import withBundleAnalyzer from "@next/bundle-analyzer";
+
+/**
+ * Bundle analysis (Phase 10): run with ANALYZE=true to emit webpack-bundle-
+ * analyzer HTML reports under .next/analyze. The reports are webpack-based,
+ * so pair it with `next build --webpack` (the default Turbopack build skips
+ * them). Reads ANALYZE from process.env directly — build-time only, same
+ * documented exception class as logger.ts.
+ */
+const analyzer = withBundleAnalyzer({ enabled: process.env.ANALYZE === "true" });
 
 /**
  * GeraldOS — Security Headers
@@ -66,4 +76,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default analyzer(nextConfig);

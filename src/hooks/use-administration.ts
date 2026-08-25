@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getList, mutate } from "@/lib/api-client";
-import { qk } from "@/lib/query-keys";
+import { NEAR_STATIC_STALE_MS, qk } from "@/lib/query-keys";
 
 export function useEmployees<T>() {
   return useQuery({
@@ -13,6 +13,8 @@ export function useBranches<T>() {
   return useQuery({
     queryKey: qk.branches(),
     queryFn: async () => (await getList<T>("/api/branches")).data,
+    // Near-static reference data; admin mutations invalidate this key.
+    staleTime: NEAR_STATIC_STALE_MS,
   });
 }
 

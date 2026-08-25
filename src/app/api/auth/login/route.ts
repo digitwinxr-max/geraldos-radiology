@@ -1,8 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { discoverOidc, buildAuthorizationUrl, keycloakConfigured } from "@/lib/auth/oidc";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { rateLimited } from "@/lib/api-error";
-import { v4 as uuid } from "uuid";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   }
   try {
     const oidc = await discoverOidc();
-    const state = uuid();
+    const state = randomUUID();
     const redirectUri = `${request.nextUrl.origin}/api/auth/callback`;
     const url = buildAuthorizationUrl(oidc, redirectUri, state);
     const res = NextResponse.redirect(url);

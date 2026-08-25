@@ -12,6 +12,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { WorkstationProvider, useWorkstation } from "@/components/workstation/workstation-context";
 import { WorklistPanel } from "@/components/workstation/worklist-panel";
 import { ViewerPanel } from "@/components/workstation/viewer-panel";
@@ -108,8 +109,7 @@ function WorkstationLayout() {
             <ChevronLeft className="h-4 w-4" />
           </Link>
           <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-md bg-white">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/gh-logo.png" alt="GH logo" className="h-5 w-5 object-contain" />
+            <Image src="/gh-logo.png" alt="GH logo" width={20} height={20} className="h-5 w-5 object-contain" />
           </span>
           <span className="text-[12px] font-semibold text-slate-800 dark:text-slate-100">Radiologist Workstation</span>
           <span className="hidden text-[10px] text-slate-400 md:inline">Fluent in Imaging · reporting · AI review — one workspace</span>

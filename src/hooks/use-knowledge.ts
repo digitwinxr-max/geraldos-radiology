@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getList, mutate } from "@/lib/api-client";
-import { qk } from "@/lib/query-keys";
+import { NEAR_STATIC_STALE_MS, qk } from "@/lib/query-keys";
 
 /** Knowledge search — keyed by category + query (the page refetches per keystroke; no debounce by design). */
 export function useKnowledgeDocuments<T>(category: string, q: string) {
@@ -13,6 +13,8 @@ export function useKnowledgeDocuments<T>(category: string, q: string) {
       const qs = params.toString();
       return (await getList<T>(`/api/knowledge${qs ? `?${qs}` : ""}`)).data;
     },
+    // Near-static reference data; document creation invalidates ["knowledge"].
+    staleTime: NEAR_STATIC_STALE_MS,
   });
 }
 

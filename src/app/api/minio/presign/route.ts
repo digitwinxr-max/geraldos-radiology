@@ -1,7 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { integrationConfig } from "@/lib/integrations";
 import { generatePresignedUpload } from "@/lib/integrations/minio";
-import { v4 as uuid } from "uuid";
 import { withAuth } from "@/lib/middleware-helpers";
 import { apiError, internalError } from "@/lib/api-error";
 
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const scope = (body.scope ?? "documents").replace(/[^a-z0-9-]/gi, "");
     const filename = (body.filename ?? "file.bin").replace(/[^\w.-]/g, "_");
     const contentType = body.contentType ?? "application/octet-stream";
-    const key = `${scope}/${new Date().toISOString().slice(0, 10)}/${uuid()}-${filename}`;
+    const key = `${scope}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${filename}`;
 
     try {
       const result = await generatePresignedUpload(key, contentType);

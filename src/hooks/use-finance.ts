@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getList, getJson, mutate } from "@/lib/api-client";
-import { qk } from "@/lib/query-keys";
+import { NEAR_STATIC_STALE_MS, qk } from "@/lib/query-keys";
 
 export function useInvoices<T>() {
   return useQuery({
@@ -27,6 +27,8 @@ export function useTariffs<T>() {
   return useQuery({
     queryKey: qk.tariffs(),
     queryFn: async () => (await getList<T>("/api/tariffs")).data,
+    // Near-static reference data; finance mutations invalidate this key.
+    staleTime: NEAR_STATIC_STALE_MS,
   });
 }
 

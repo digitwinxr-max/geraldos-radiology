@@ -59,3 +59,10 @@ export const qk = {
   integrationsStatus: () => ["integrations", "status"] as const,
   authMe: () => ["auth", "me"] as const,
 } as const;
+
+/**
+ * Stale time for near-static reference data (tariffs, knowledge, branches).
+ * These queries skip re-fetching for 5 minutes across mounts; mutations still
+ * force an immediate refresh because they invalidate the matching keys.
+ */
+export const NEAR_STATIC_STALE_MS = 5 * 60 * 1000;

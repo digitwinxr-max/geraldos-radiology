@@ -529,6 +529,10 @@ export default function ImagingPage() {
                     <button className="flex w-full items-center gap-3 text-left" onClick={() => { setSelectedSeries(series); loadSeries(series.orthancId); }}>
                       <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-slate-800">
                         {thumbnailFor(series) ? (
+                          // Approved exemption from @next/next/no-img-element (Phase 10): the src is a
+                          // runtime Orthanc preview URL behind /api/orthanc/* — remote-pattern config
+                          // would buy nothing, and next/image can't replicate the onError-hide fallback.
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={thumbnailFor(series)}
                             alt={series.description ?? "series"}

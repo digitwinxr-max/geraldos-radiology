@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import NextImage from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAppShell } from "@/components/app-shell-context";
@@ -65,8 +66,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className={cn("flex h-16 items-center border-b border-slate-200 dark:border-slate-800", sidebarCollapsed ? "justify-center px-2" : "gap-3 px-6")}>
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/gh-logo.png" alt="GH logo" className="h-9 w-9 object-contain" />
+          <NextImage src="/gh-logo.png" alt="GH logo" width={36} height={36} className="h-9 w-9 object-contain" />
         </div>
         {!sidebarCollapsed && (
           <div className="min-w-0">
