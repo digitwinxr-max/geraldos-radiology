@@ -11,8 +11,8 @@ export async function GET(request: NextRequest) {
     try {
       const snapshot = await getCommandCentreSnapshot();
       return NextResponse.json({ ok: true, ...snapshot });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

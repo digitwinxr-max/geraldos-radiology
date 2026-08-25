@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { auditLog } from "@/db/schema";
+import { logger, serializeError } from "@/lib/logger";
 
 export async function recordAudit(entry: {
   userId?: string;
@@ -19,6 +20,6 @@ export async function recordAudit(entry: {
       details: entry.details ?? null,
     });
   } catch (error) {
-    console.error("audit write failed", error);
+    logger.error("audit write failed", { err: serializeError(error), action: entry.action, module: entry.module });
   }
 }

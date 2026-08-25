@@ -30,8 +30,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         db.select({ count: count() }).from(reportVersions).where(where),
       ]);
       return NextResponse.json(listEnvelope(rows, totalRow[0]?.count ?? 0, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

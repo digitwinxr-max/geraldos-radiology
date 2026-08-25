@@ -48,8 +48,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       });
 
       return NextResponse.json({ ok: true, observation: row });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

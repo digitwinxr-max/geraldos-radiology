@@ -409,8 +409,8 @@ export async function POST(request: NextRequest) {
         orthancStudiesLinked: claimedUids.size,
       },
     });
-  } catch {
-    return internalError();
+  } catch (error) {
+    return internalError(error);
   }
 }
 

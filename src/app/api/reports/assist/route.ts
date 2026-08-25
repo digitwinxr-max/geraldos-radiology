@@ -117,8 +117,8 @@ export async function POST(request: NextRequest) {
         priorStudies,
         sources: [template?.name ?? "default template"].filter(Boolean),
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

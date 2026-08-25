@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
       const opts = serviceOpts(parsed.data);
       const pageRows = merged.slice(opts.offset, opts.offset + opts.limit);
       return NextResponse.json(listEnvelope(pageRows, merged.length, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

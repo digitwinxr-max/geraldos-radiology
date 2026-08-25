@@ -17,6 +17,7 @@ const PUBLIC_PREFIXES = [
   "/login",
   "/api/auth",
   "/api/health",
+  "/api/metrics",
   "/api/webhooks",
   "/api/integrations/client-config",
   "/_next",

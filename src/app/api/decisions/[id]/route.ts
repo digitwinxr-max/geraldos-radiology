@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     } catch (error) {
       if (error instanceof Error && /not found/.test(error.message)) return notFound("decision");
-      return internalError();
+      return internalError(error);
     }
   });
 }

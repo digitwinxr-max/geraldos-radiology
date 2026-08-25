@@ -11,8 +11,8 @@ export async function GET(request: NextRequest) {
     try {
       const summary = await getAnalyticsSummary();
       return NextResponse.json(summary);
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

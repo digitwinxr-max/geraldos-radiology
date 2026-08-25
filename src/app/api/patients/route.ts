@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
     try {
       const { rows, total } = await listPatients({ ...serviceOpts(parsed.data), search });
       return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
     try {
       const result = await db.insert(patients).values(parsed.data).returning();
       return NextResponse.json(result[0], { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

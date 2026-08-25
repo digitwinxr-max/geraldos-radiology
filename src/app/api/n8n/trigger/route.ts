@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
       let data: unknown = text;
       try { data = JSON.parse(text); } catch { /* plain text */ }
       return NextResponse.json({ ok: res.ok, upstreamStatus: res.status, data });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

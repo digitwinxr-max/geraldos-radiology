@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
         status: "pending",
         message: "Storage commitment request submitted. Check job status for completion.",
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

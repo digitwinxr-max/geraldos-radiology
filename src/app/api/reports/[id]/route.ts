@@ -39,8 +39,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .where(eq(reports.id, id));
       if (!row) return notFound("report");
       return NextResponse.json({ ok: true, report: row });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -125,8 +125,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
 
       return NextResponse.json({ ok: true, report: updated });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
     try {
       const { rows, total } = await listReports({ ...serviceOpts(parsed.data), patientId });
       return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
     try {
       const result = await db.insert(reports).values(parsed.data).returning();
       return NextResponse.json(result[0], { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

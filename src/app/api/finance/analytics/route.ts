@@ -70,8 +70,8 @@ export async function GET(request: NextRequest) {
         claimsByStatus: claimsByStatus.map((r) => ({ status: r.status, count: Number(r.count), total: Number(r.total ?? 0) })),
         revenueByDay: revenueByDay.rows,
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

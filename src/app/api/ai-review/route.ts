@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
         db.select({ count: count() }).from(aiObservations).where(where),
       ]);
       return NextResponse.json(listEnvelope(rows, totalRow[0]?.count ?? 0, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -109,8 +109,8 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json({ ok: true, observations: inserted, sources: ["geraldos-review-1"] }, { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

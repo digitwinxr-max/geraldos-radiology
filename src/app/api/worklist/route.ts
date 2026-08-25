@@ -117,8 +117,8 @@ export async function GET(request: NextRequest) {
       // In-memory paging over the priority-ordered result set.
       const { page, pageSize, offset } = parsed.data;
       return NextResponse.json(listEnvelope(rows.slice(offset, offset + pageSize), rows.length, page, pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

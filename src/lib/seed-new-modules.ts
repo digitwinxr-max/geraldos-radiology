@@ -22,12 +22,13 @@ import {
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { BUILT_IN_TEMPLATES } from "@/lib/reporting";
+import { logger } from "@/lib/logger";
 
 async function guard(name: string, fn: () => Promise<unknown>): Promise<void> {
   try {
     await fn();
   } catch (error) {
-    console.warn(`[seed:${name}] skipped (${error instanceof Error ? error.message : String(error)})`);
+    logger.warn(`seed:${name} skipped`, { reason: error instanceof Error ? error.message : String(error) });
   }
 }
 

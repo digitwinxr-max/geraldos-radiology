@@ -61,8 +61,8 @@ export async function GET(request: NextRequest) {
         modalities: Array.isArray(modalities) ? modalities : [],
         peers: Array.isArray(peers) ? peers : [],
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

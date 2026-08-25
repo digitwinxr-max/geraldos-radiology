@@ -32,8 +32,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         status: res.status,
         headers: { "content-type": res.headers.get("content-type") ?? "application/fhir+json" },
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

@@ -54,8 +54,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           lastUpdate: patient.LastUpdate ?? null,
         },
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

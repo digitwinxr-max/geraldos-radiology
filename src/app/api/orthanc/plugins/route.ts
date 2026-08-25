@@ -47,8 +47,8 @@ export async function GET(request: NextRequest) {
         totalPlugins: pluginList.length,
         totalJobs: Array.isArray(jobs) ? jobs.length : 0,
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

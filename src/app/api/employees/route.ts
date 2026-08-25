@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
     try {
       const { rows, total } = await staffService.listEmployees(serviceOpts(parsed.data));
       return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
         })
         .returning();
       return NextResponse.json({ data: row }, { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

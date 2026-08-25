@@ -11,6 +11,7 @@ import { db } from "@/db";
 import { eventLog } from "@/db/schema";
 import { count, desc, eq, sql } from "drizzle-orm";
 import { getRedis } from "@/lib/redis";
+import { logger, serializeError } from "@/lib/logger";
 
 export const EVENT_STREAM = "geraldos:events";
 export const EVENT_GROUP = "geraldos-consumers";
@@ -99,7 +100,7 @@ export async function publishEvent(input: PublishEventInput): Promise<void> {
       source: input.source ?? "app",
     });
   } catch (error) {
-    console.error("event_log write failed", error);
+    logger.error("event_log write failed", { err: serializeError(error), type: input.type });
   }
 }
 

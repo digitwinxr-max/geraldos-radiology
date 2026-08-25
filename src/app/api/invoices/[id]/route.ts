@@ -17,8 +17,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (!invoice) return notFound("invoice");
       const lineItems = await getInvoiceLineItems(id);
       return NextResponse.json({ data: { ...invoice, lineItems } });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -38,8 +38,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         .returning();
       if (result.length === 0) return notFound("invoice");
       return NextResponse.json({ data: result[0] });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

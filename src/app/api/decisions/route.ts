@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   try {
     const { rows, total } = await listDecisions(status, serviceOpts(parsed.data));
     return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
-  } catch {
-    return internalError();
+  } catch (error) {
+    return internalError(error);
   }
 }
 
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       requestedBy: body.requestedBy ?? "system-agent",
     });
     return NextResponse.json({ ok: true, decision }, { status: 201 });
-  } catch {
-    return internalError();
+  } catch (error) {
+    return internalError(error);
   }
 }

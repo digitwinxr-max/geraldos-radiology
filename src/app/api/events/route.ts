@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
       const { page, pageSize, offset } = parsed.data;
       const [events, total] = await Promise.all([listEvents(pageSize, type, offset), countEvents(type)]);
       return NextResponse.json(listEnvelope(events, total, page, pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
         source: "manual",
       });
       return NextResponse.json({ ok: true });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

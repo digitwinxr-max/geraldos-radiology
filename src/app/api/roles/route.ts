@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
           parsed.data.pageSize
         )
       );
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -64,8 +64,8 @@ export async function POST(request: NextRequest) {
         })
         .returning();
       return NextResponse.json({ data: row }, { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

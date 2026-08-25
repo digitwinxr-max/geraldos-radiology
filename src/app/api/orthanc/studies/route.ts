@@ -78,8 +78,8 @@ export async function GET(request: NextRequest) {
         // Drop studies with no patient identity — unknown patients never surface in the worklist.
         .filter((s) => Boolean(s.patientName?.trim()));
       return NextResponse.json({ ok: true, studies });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

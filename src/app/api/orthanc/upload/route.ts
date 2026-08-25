@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
         failed: results.length - success,
         results,
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

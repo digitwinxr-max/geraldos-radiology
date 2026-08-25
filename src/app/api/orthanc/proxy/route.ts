@@ -27,8 +27,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         status: res.status,
         headers: { "content-type": contentType },
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

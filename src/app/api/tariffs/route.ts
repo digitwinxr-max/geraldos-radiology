@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
     try {
       const { rows, total } = await financeService.listTariffs(serviceOpts(parsed.data));
       return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
     try {
       const row = await financeService.createTariff(v.data);
       return NextResponse.json({ data: row }, { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

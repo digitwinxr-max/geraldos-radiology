@@ -13,8 +13,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const row = await notificationService.markNotificationRead(id);
       if (!row) return notFound("notification");
       return NextResponse.json({ ok: true, notification: row });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -27,8 +27,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       if (!row) return notFound("notification");
       // Notifications don't have a dedicated delete in the service; use the read-mark pattern
       return NextResponse.json({ ok: true });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

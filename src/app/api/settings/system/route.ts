@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
       const settingsMap: Record<string, unknown> = {};
       result.forEach((s) => { settingsMap[s.key] = s.value; });
       return NextResponse.json({ data: settingsMap });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -42,8 +42,8 @@ export async function PUT(request: NextRequest) {
           set: { value: v.data.value, updatedBy: v.data.updatedBy ?? user.sub, updatedAt: new Date() },
         });
       return NextResponse.json({ ok: true });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

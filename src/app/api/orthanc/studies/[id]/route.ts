@@ -82,8 +82,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           series,
         },
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

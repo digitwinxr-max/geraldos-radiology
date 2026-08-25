@@ -27,8 +27,8 @@ export async function GET(request: import("next/server").NextRequest) {
         physicians: physicians.map((p) => p.name).filter(Boolean),
         locations: locations.map((l) => l.location).filter(Boolean),
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

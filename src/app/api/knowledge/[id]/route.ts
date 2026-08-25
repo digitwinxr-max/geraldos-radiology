@@ -17,8 +17,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const [doc] = await db.select().from(knowledgeDocuments).where(eq(knowledgeDocuments.id, id));
       if (!doc) return notFound("document");
       return NextResponse.json({ ok: true, document: doc });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -48,8 +48,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         await publishEvent({ type: "knowledge.published", aggregate: "knowledge", aggregateId: doc.id, payload: { title: doc.title } });
       }
       return NextResponse.json({ ok: true, document: doc });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -68,8 +68,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         details: { title: doc.title },
       });
       return NextResponse.json({ ok: true });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

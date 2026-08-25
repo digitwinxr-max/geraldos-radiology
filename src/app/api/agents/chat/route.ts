@@ -87,8 +87,8 @@ export async function POST(request: NextRequest) {
         sources: sources ?? [],
         source: langgraphConfigured ? "local-fallback" : "local-simulation",
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

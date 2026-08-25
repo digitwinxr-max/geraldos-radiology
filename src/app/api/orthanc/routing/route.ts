@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json({ ok: true, jobId: result.ID, target, type });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

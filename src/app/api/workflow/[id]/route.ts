@@ -158,8 +158,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         details: { updates },
       });
       return NextResponse.json({ ok: true, study: updated, transitioned: false });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

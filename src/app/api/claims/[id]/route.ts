@@ -24,8 +24,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const result = await db.update(insuranceClaims).set(updates).where(eq(insuranceClaims.id, id)).returning();
       if (result.length === 0) return notFound("claim");
       return NextResponse.json({ data: result[0] });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
       await ensureBucket();
       const buckets = await listBuckets();
       return NextResponse.json({ ok: true, buckets, defaultBucket: bucket });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

@@ -39,8 +39,8 @@ export async function GET(request: NextRequest) {
     const ranked = await searchKnowledge(q, { category, limit: 200 });
     const pageRows = ranked.slice(opts.offset, opts.offset + opts.limit);
     return NextResponse.json(listEnvelope(pageRows, ranked.length, parsed.data.page, parsed.data.pageSize));
-  } catch {
-    return internalError();
+  } catch (error) {
+    return internalError(error);
   }
 }
 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       await publishEvent({ type: "knowledge.published", aggregate: "knowledge", aggregateId: doc.id, payload: { title: doc.title } });
     }
     return NextResponse.json({ ok: true, document: doc }, { status: 201 });
-  } catch {
-    return internalError();
+  } catch (error) {
+    return internalError(error);
   }
 }

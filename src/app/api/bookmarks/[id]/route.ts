@@ -14,8 +14,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       const [row] = await db.delete(studyBookmarks).where(eq(studyBookmarks.id, id)).returning();
       if (!row) return notFound("bookmark");
       return NextResponse.json({ ok: true });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

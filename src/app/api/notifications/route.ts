@@ -18,8 +18,8 @@ export async function GET(request: NextRequest) {
         ...listEnvelope(notifications, total, parsed.data.page, parsed.data.pageSize),
         unread,
       });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
     try {
       const row = await notificationService.createNotification(v.data);
       return NextResponse.json({ ok: true, notification: row }, { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

@@ -22,8 +22,8 @@ export async function POST(request: NextRequest) {
     try {
       const result = await generatePresignedUpload(key, contentType);
       return NextResponse.json(result);
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
       }
       const json = (await res.json()) as { results?: unknown[] };
       return NextResponse.json({ ok: true, results: json.results ?? [], query });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

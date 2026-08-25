@@ -6,6 +6,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { logger, serializeError } from "@/lib/logger";
 
 // ─── Error shape ───
 
@@ -48,7 +49,15 @@ export function validationFailed(issues: unknown): NextResponse<ApiErrorBody> {
   return apiError("VALIDATION_FAILED", "Request validation failed", 400, issues);
 }
 
-export function internalError(): NextResponse<ApiErrorBody> {
+/**
+ * 500 response with a safe, detail-free envelope. Pass the caught error so
+ * its full context (message, stack, active request context) is logged
+ * server-side while clients only ever see the generic message.
+ */
+export function internalError(error?: unknown): NextResponse<ApiErrorBody> {
+  if (error !== undefined) {
+    logger.error("Internal server error", { err: serializeError(error) });
+  }
   return apiError("INTERNAL_ERROR", "An unexpected error occurred", 500);
 }
 

@@ -72,8 +72,8 @@ export async function GET(request: NextRequest) {
 
       const filtered = modality ? rows.filter((r) => r.modality === modality) : rows;
       return NextResponse.json({ ok: true, source: "local", date, modality: modality ?? "all", items: filtered });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }

@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
     try {
       const { rows, total } = await listInvoices(serviceOpts(parsed.data));
       return NextResponse.json(listEnvelope(rows, total, parsed.data.page, parsed.data.pageSize));
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
@@ -87,8 +87,8 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json({ data: invoice }, { status: 201 });
-    } catch {
-      return internalError();
+    } catch (error) {
+      return internalError(error);
     }
   });
 }
