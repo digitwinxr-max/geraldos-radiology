@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
+import { createSessionToken, SESSION_COOKIE, secureCookieOptions } from "@/lib/auth/session";
 import { keycloakConfigured } from "@/lib/auth/oidc";
 import { recordAudit } from "@/lib/audit";
 
@@ -10,9 +10,13 @@ export const dynamic = "force-dynamic";
  * wired up (or when DEV_AUTH=true). Keeps the platform demoable in degraded mode.
  */
 export async function GET(request: NextRequest) {
-  const allowDev = !keycloakConfigured() || process.env.DEV_AUTH === "true";
+  const isDevEnvironment = process.env.NODE_ENV !== "production";
+  const allowDev = isDevEnvironment && (!keycloakConfigured() || process.env.DEV_AUTH === "true");
   if (!allowDev) {
-    return NextResponse.redirect(new URL("/login?error=dev_auth_disabled", request.nextUrl.origin));
+    return NextResponse.json(
+      { error: { code: "FORBIDDEN", message: "Dev authentication is not available in this environment" } },
+      { status: 403 }
+    );
   }
 
   const token = await createSessionToken({
@@ -31,11 +35,6 @@ export async function GET(request: NextRequest) {
   });
 
   const res = NextResponse.redirect(new URL("/", request.nextUrl.origin));
-  res.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 8,
-  });
+  res.cookies.set(SESSION_COOKIE, token, secureCookieOptions());
   return res;
 }

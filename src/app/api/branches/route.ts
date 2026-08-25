@@ -1,38 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { branches } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/middleware-helpers";
+import { validateBody, createBranchSchema } from "@/lib/validation";
+import { internalError } from "@/lib/api-error";
+import * as staffService from "@/services/staff-service";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/branches — list all branches. */
-export async function GET() {
-  try {
-    const result = await db.select().from(branches).orderBy(desc(branches.createdAt));
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch branches" }, { status: 500 });
-  }
+export async function GET(request: NextRequest) {
+  return withAuth(request, "administration.read", async () => {
+    try {
+      const rows = await staffService.listBranches();
+      return NextResponse.json({ data: rows });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
-/** POST /api/branches { name, code, address, phone, email, managerName, status } */
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    if (!body?.name || !body?.code) {
-      return NextResponse.json({ error: "name and code are required" }, { status: 400 });
+  return withAuth(request, "administration.write", async () => {
+    const v = await validateBody(request, createBranchSchema);
+    if (!v.success) return v.error;
+
+    try {
+      const row = await staffService.createBranch(v.data);
+      return NextResponse.json({ data: row }, { status: 201 });
+    } catch {
+      return internalError();
     }
-    const result = await db.insert(branches).values({
-      name: body.name,
-      code: body.code,
-      address: body.address ?? null,
-      phone: body.phone ?? null,
-      email: body.email ?? null,
-      managerName: body.managerName ?? null,
-      status: body.status ?? "active",
-    }).returning();
-    return NextResponse.json(result[0], { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to create branch" }, { status: 500 });
-  }
+  });
 }

@@ -1,23 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { roles } from "@/db/schema";
+import { withAuth } from "@/lib/middleware-helpers";
+import { internalError } from "@/lib/api-error";
 
-export async function GET() {
-  try {
-    const result = await db.select().from(roles).orderBy(roles.name);
-    // `permissions` is a jsonb column: some drivers/rows return it as a
-    // serialized JSON string or a non-array value. Normalize to a real array
-    // so the UI can always call `.map()` safely.
-    return NextResponse.json(
-      result.map((r) => ({
-        ...r,
-        permissions: normalizePermissions(r.permissions),
-      }))
-    );
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch roles" }, { status: 500 });
-  }
-}
+export const dynamic = "force-dynamic";
 
 function normalizePermissions(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
@@ -27,31 +15,48 @@ function normalizePermissions(value: unknown): string[] {
       if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === "string");
       if (parsed && typeof parsed === "object") return Object.keys(parsed).filter((k) => parsed[k] === true || typeof parsed[k] !== "boolean");
     } catch {
-      /* not valid JSON — fall through */
+      /* not valid JSON */
     }
     return [];
   }
-  // Legacy shape: permissions stored as a JSON object map, e.g. {"imaging":true,"reports":true}.
   if (value && typeof value === "object") {
     return Object.keys(value).filter((k) => (value as Record<string, unknown>)[k] !== false);
   }
   return [];
 }
 
+export async function GET(request: NextRequest) {
+  return withAuth(request, "administration.read", async () => {
+    try {
+      const result = await db.select().from(roles).orderBy(roles.name);
+      return NextResponse.json({
+        data: result.map((r) => ({ ...r, permissions: normalizePermissions(r.permissions) })),
+      });
+    } catch {
+      return internalError();
+    }
+  });
+}
+
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const result = await db
-      .insert(roles)
-      .values({
-        name: body.name,
-        description: body.description ?? null,
-        permissions: Array.isArray(body.permissions) ? body.permissions : [],
-        isSystem: false,
-      })
-      .returning();
-    return NextResponse.json(result[0], { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to create role" }, { status: 500 });
-  }
+  return withAuth(request, "administration.write", async () => {
+    const body = await request.json().catch(() => null);
+    if (!body?.name) {
+      return NextResponse.json({ error: { code: "VALIDATION_FAILED", message: "name is required" } }, { status: 400 });
+    }
+    try {
+      const [row] = await db
+        .insert(roles)
+        .values({
+          name: body.name,
+          description: body.description ?? null,
+          permissions: Array.isArray(body.permissions) ? body.permissions : [],
+          isSystem: false,
+        })
+        .returning();
+      return NextResponse.json({ data: row }, { status: 201 });
+    } catch {
+      return internalError();
+    }
+  });
 }

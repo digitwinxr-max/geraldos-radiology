@@ -1,22 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { staff } from "@/db/schema";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/middleware-helpers";
+import { validateBody, createStaffSchema } from "@/lib/validation";
+import { internalError } from "@/lib/api-error";
+import * as staffService from "@/services/staff-service";
 
-export async function GET() {
-  try {
-    const result = await db.select().from(staff).orderBy(staff.lastName);
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch staff" }, { status: 500 });
-  }
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  return withAuth(request, "administration.read", async () => {
+    try {
+      const rows = await staffService.listStaff();
+      return NextResponse.json({ data: rows });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const result = await db.insert(staff).values(body).returning();
-    return NextResponse.json(result[0], { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to create staff" }, { status: 500 });
-  }
+  return withAuth(request, "administration.write", async () => {
+    const v = await validateBody(request, createStaffSchema);
+    if (!v.success) return v.error;
+
+    try {
+      const row = await staffService.createStaff(v.data);
+      return NextResponse.json({ data: row }, { status: 201 });
+    } catch {
+      return internalError();
+    }
+  });
 }

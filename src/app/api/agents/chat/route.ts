@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { integrationConfig } from "@/lib/integrations";
 import { AGENT_MAP, AGENTS, handleAgentRequest } from "@/lib/agents";
 import { recordAudit } from "@/lib/audit";
+import { withAuth } from "@/lib/middleware-helpers";
+import { apiError, internalError } from "@/lib/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -38,47 +40,50 @@ async function runOnLangGraph(agentId: string, message: string): Promise<string>
 
 /** POST /api/agents/chat { agent: "reporting", message: "..." } */
 export async function POST(request: NextRequest) {
-  let body: { agent?: string; message?: string };
-  try {
-    body = (await request.json()) as { agent?: string; message?: string };
-  } catch {
-    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
-  }
-  const agentId = (body.agent ?? "executive").toLowerCase();
-  const message = (body.message ?? "").trim();
-  if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
-  if (!AGENT_MAP[agentId]) {
-    return NextResponse.json(
-      { error: "unknown agent", agents: AGENTS.map((a) => a.id) },
-      { status: 400 }
-    );
-  }
-
-  const agent = AGENT_MAP[agentId];
-  await recordAudit({
-    action: "agent.interaction",
-    module: "agents",
-    entityType: "agent",
-    entityId: agentId,
-    details: { message: message.slice(0, 200) },
-  });
-
-  const langgraphConfigured = Boolean(integrationConfig.langgraph.url);
-  if (langgraphConfigured) {
+  return withAuth(request, "ai-review.write", async () => {
+    let body: { agent?: string; message?: string };
     try {
-      const reply = await runOnLangGraph(agentId, message);
-      return NextResponse.json({ agent: agent.name, reply, source: "langgraph" });
+      body = (await request.json()) as { agent?: string; message?: string };
     } catch {
-      // Fall through to the live-data brain.
+      return apiError("VALIDATION_FAILED", "Request body is not valid JSON", 400);
     }
-  }
+    const agentId = (body.agent ?? "executive").toLowerCase();
+    const message = (body.message ?? "").trim();
+    if (!message) return apiError("VALIDATION_FAILED", "message is required", 400);
+    if (!AGENT_MAP[agentId]) {
+      return apiError("VALIDATION_FAILED", `Unknown agent "${agentId}"`, 400, { agents: AGENTS.map((a) => a.id) });
+    }
 
-  const { reply, sources } = await handleAgentRequest(agentId, message);
-  return NextResponse.json({
-    agent: agent.name,
-    mission: agent.mission,
-    reply,
-    sources: sources ?? [],
-    source: langgraphConfigured ? "local-fallback" : "local-simulation",
+    const agent = AGENT_MAP[agentId];
+    await recordAudit({
+      action: "agent.interaction",
+      module: "agents",
+      entityType: "agent",
+      entityId: agentId,
+      details: { message: message.slice(0, 200) },
+    });
+
+    try {
+      const langgraphConfigured = Boolean(integrationConfig.langgraph.url);
+      if (langgraphConfigured) {
+        try {
+          const reply = await runOnLangGraph(agentId, message);
+          return NextResponse.json({ agent: agent.name, reply, source: "langgraph" });
+        } catch {
+          // Fall through to the live-data brain.
+        }
+      }
+
+      const { reply, sources } = await handleAgentRequest(agentId, message);
+      return NextResponse.json({
+        agent: agent.name,
+        mission: agent.mission,
+        reply,
+        sources: sources ?? [],
+        source: langgraphConfigured ? "local-fallback" : "local-simulation",
+      });
+    } catch {
+      return internalError();
+    }
   });
 }

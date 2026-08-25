@@ -1,47 +1,68 @@
+/**
+ * GeraldOS — Next.js Proxy (Edge Authentication Gate)
+ *
+ * Next.js 16 uses the "proxy" file convention (replacing the older "middleware"
+ * convention). Every request passes through here before reaching a page or API
+ * route. When Keycloak is not configured the platform runs in degraded (bypass)
+ * mode so it remains usable during integration setup.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
-import { jwtVerify } from "jose";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
-const SESSION_COOKIE = "geraldos_session";
+// ─── Public routes that never require authentication ───
 
-function secretKey(): Uint8Array {
-  const secret = process.env.AUTH_SECRET ?? "geraldos-dev-secret-change-me";
-  return new TextEncoder().encode(secret);
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/api/auth",
+  "/api/health",
+  "/api/webhooks",
+  "/api/integrations/client-config",
+  "/_next",
+  "/favicon.ico",
+];
+
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+// ─── Proxy handler ───
+
 export async function proxy(request: NextRequest) {
-  // When Keycloak is not configured, run in degraded (bypass) mode so the
-  // platform remains usable while integrations are being deployed.
+  const { pathname } = request.nextUrl;
+
+  // Public routes pass through unconditionally.
+  if (isPublic(pathname)) {
+    return NextResponse.next();
+  }
+
+  // When Keycloak is not configured, run in degraded mode so the platform
+  // remains usable while identity services are being provisioned.
   if (!process.env.KEYCLOAK_URL) {
     return NextResponse.next();
   }
 
-  const { pathname } = request.nextUrl;
-  if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/health") ||
-    pathname.startsWith("/api/webhooks") ||
-    pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico"
-  ) {
-    return NextResponse.next();
-  }
-
+  // Verify the session cookie using the same logic as the rest of the app.
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (token) {
-    try {
-      await jwtVerify(token, secretKey());
+    const user = await verifySessionToken(token);
+    if (user) {
       return NextResponse.next();
-    } catch {
-      // invalid/expired token
     }
   }
 
+  // No valid session — reject API calls with 401, redirect pages to login.
   if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+      { status: 401 },
+    );
   }
+
   return NextResponse.redirect(new URL("/login", request.nextUrl.origin));
 }
+
+// ─── Matcher — exclude static assets and Next.js internals ───
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],

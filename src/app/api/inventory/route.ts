@@ -1,23 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { inventoryItems } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/middleware-helpers";
+import { validateBody, createInventoryItemSchema } from "@/lib/validation";
+import { internalError } from "@/lib/api-error";
+import * as inventoryService from "@/services/inventory-service";
 
-export async function GET() {
-  try {
-    const result = await db.select().from(inventoryItems).orderBy(inventoryItems.category, inventoryItems.name);
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch inventory" }, { status: 500 });
-  }
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  return withAuth(request, "inventory.read", async () => {
+    try {
+      const rows = await inventoryService.listInventory();
+      return NextResponse.json({ data: rows });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const result = await db.insert(inventoryItems).values(body).returning();
-    return NextResponse.json(result[0], { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to create inventory item" }, { status: 500 });
-  }
+  return withAuth(request, "inventory.write", async () => {
+    const v = await validateBody(request, createInventoryItemSchema);
+    if (!v.success) return v.error;
+
+    try {
+      const row = await inventoryService.createInventoryItem(v.data);
+      return NextResponse.json({ data: row }, { status: 201 });
+    } catch {
+      return internalError();
+    }
+  });
 }

@@ -1,23 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { tariffs } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/middleware-helpers";
+import { validateBody, createTariffSchema } from "@/lib/validation";
+import { internalError } from "@/lib/api-error";
+import * as financeService from "@/services/finance-service";
 
-export async function GET() {
-  try {
-    const result = await db.select().from(tariffs).orderBy(tariffs.modality, tariffs.code);
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch tariffs" }, { status: 500 });
-  }
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  return withAuth(request, "finance.read", async () => {
+    try {
+      const rows = await financeService.listTariffs();
+      return NextResponse.json({ data: rows });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const result = await db.insert(tariffs).values(body).returning();
-    return NextResponse.json(result[0], { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to create tariff" }, { status: 500 });
-  }
+  return withAuth(request, "finance.write", async () => {
+    const v = await validateBody(request, createTariffSchema);
+    if (!v.success) return v.error;
+
+    try {
+      const row = await financeService.createTariff(v.data);
+      return NextResponse.json({ data: row }, { status: 201 });
+    } catch {
+      return internalError();
+    }
+  });
 }

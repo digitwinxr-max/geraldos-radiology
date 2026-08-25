@@ -1,38 +1,45 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/middleware-helpers";
+import { notFound, internalError } from "@/lib/api-error";
+import { getInvoice, getInvoiceLineItems } from "@/services/finance-service";
 import { db } from "@/db";
-import { invoices, invoiceLineItems } from "@/db/schema";
+import { invoices } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(request, "finance.read", async () => {
     const { id } = await params;
-    const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id));
-    if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
-    const lineItems = await db.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, id));
-    return NextResponse.json({ ...invoice, lineItems });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch invoice" }, { status: 500 });
-  }
+    try {
+      const invoice = await getInvoice(id);
+      if (!invoice) return notFound("invoice");
+      const lineItems = await getInvoiceLineItems(id);
+      return NextResponse.json({ data: { ...invoice, lineItems } });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(request, "finance.write", async () => {
     const { id } = await params;
-    const body = await request.json();
-    const result = await db
-      .update(invoices)
-      .set({ ...body, updatedAt: new Date() })
-      .where(eq(invoices.id, id))
-      .returning();
-    if (result.length === 0) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
-    return NextResponse.json(result[0]);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to update invoice" }, { status: 500 });
-  }
+    const body = await request.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: { code: "VALIDATION_FAILED", message: "Request body required" } }, { status: 400 });
+    }
+    try {
+      const result = await db
+        .update(invoices)
+        .set({ ...body, updatedAt: new Date() })
+        .where(eq(invoices.id, id))
+        .returning();
+      if (result.length === 0) return notFound("invoice");
+      return NextResponse.json({ data: result[0] });
+    } catch {
+      return internalError();
+    }
+  });
 }

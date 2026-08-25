@@ -86,7 +86,7 @@ if ! check_port 8123 "/ok"; then
   cd "$DIR"
   LANGGRAPH_RUNTIME_EDITION=inmem \
     REDIS_URI=redis://127.0.0.1:6379 \
-    DATABASE_URI=postgresql://postgres:postgres@127.0.0.1:5432/app_db \
+    DATABASE_URI=postgresql://postgres:postgres@127.0.0.1:5432/geraldos \
     python3 -m uvicorn "langgraph_api.server:app" \
       --host 127.0.0.1 --port 8123 --log-level warning \
       > /tmp/langgraph.log 2>&1 &

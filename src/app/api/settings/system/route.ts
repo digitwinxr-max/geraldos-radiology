@@ -1,32 +1,49 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { systemSettings } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { withAuth } from "@/lib/middleware-helpers";
+import { validateBody, updateSystemSettingsSchema } from "@/lib/validation";
+import { internalError } from "@/lib/api-error";
+import { z } from "zod";
 
-export async function GET() {
-  try {
-    const result = await db.select().from(systemSettings);
-    const settingsMap: Record<string, unknown> = {};
-    result.forEach((s) => { settingsMap[s.key] = s.value; });
-    return NextResponse.json(settingsMap);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
-  }
+export const dynamic = "force-dynamic";
+
+const putSettingSchema = z.object({
+  key: z.string().min(1).max(100),
+  value: z.unknown(),
+  updatedBy: z.string().max(100).optional(),
+});
+
+export async function GET(request: NextRequest) {
+  return withAuth(request, "administration.read", async () => {
+    try {
+      const result = await db.select().from(systemSettings);
+      const settingsMap: Record<string, unknown> = {};
+      result.forEach((s) => { settingsMap[s.key] = s.value; });
+      return NextResponse.json({ data: settingsMap });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
 export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { key, value, updatedBy } = body;
-    await db
-      .insert(systemSettings)
-      .values({ key, value, updatedBy: updatedBy ?? "system", updatedAt: new Date() })
-      .onConflictDoUpdate({
-        target: systemSettings.key,
-        set: { value, updatedBy: updatedBy ?? "system", updatedAt: new Date() },
-      });
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to update setting" }, { status: 500 });
-  }
+  return withAuth(request, "administration.write", async (user) => {
+    const v = await validateBody(request, putSettingSchema);
+    if (!v.success) return v.error;
+
+    try {
+      await db
+        .insert(systemSettings)
+        .values({ key: v.data.key, value: v.data.value, updatedBy: v.data.updatedBy ?? user.sub, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: systemSettings.key,
+          set: { value: v.data.value, updatedBy: v.data.updatedBy ?? user.sub, updatedAt: new Date() },
+        });
+      return NextResponse.json({ ok: true });
+    } catch {
+      return internalError();
+    }
+  });
 }

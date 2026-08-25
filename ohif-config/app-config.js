@@ -10,6 +10,10 @@
  * `extensions`/`modes` must be arrays (the standalone ohif/app bundle carries
  * the actual implementations) — omitting them breaks app boot.
  */
+// Resolve the GeraldOS API base at runtime so the viewer works regardless of
+// the host it is served from (localhost, Docker compose, or a proxy).
+var apiBase = window.location.protocol + '//' + window.location.hostname + ':3000';
+
 window.config = {
   routerBasename: '/',
   extensions: [],
@@ -29,10 +33,10 @@ window.config = {
       configuration: {
         friendlyName: 'GeraldOS DICOMweb (Orthanc)',
         name: 'Orthanc',
-        wadoUriRoot: 'http://localhost:3000/api/orthanc/dicom-web',
-        qidoRoot: 'http://localhost:3000/api/orthanc/dicom-web',
-        stowRoot: 'http://localhost:3000/api/orthanc/dicom-web',
-        wadoRoot: 'http://localhost:3000/api/orthanc/dicom-web',
+        wadoUriRoot: apiBase + '/api/orthanc/dicom-web',
+        qidoRoot: apiBase + '/api/orthanc/dicom-web',
+        stowRoot: apiBase + '/api/orthanc/dicom-web',
+        wadoRoot: apiBase + '/api/orthanc/dicom-web',
         requestOptions: {
           headers: {
             Accept: 'application/json',

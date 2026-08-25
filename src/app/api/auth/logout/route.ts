@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const res = NextResponse.redirect(new URL("/login?signed_out=1", origin));
-  res.cookies.delete(SESSION_COOKIE);
+  res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
 
   if (keycloakConfigured()) {
     try {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
           client_id: integrationConfig.keycloak.clientId,
         });
         const redirect = NextResponse.redirect(`${oidc.end_session_endpoint}?${params.toString()}`);
-        redirect.cookies.delete(SESSION_COOKIE);
+        redirect.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
         return redirect;
       }
     } catch {

@@ -1,34 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { expenses } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/middleware-helpers";
+import { validateBody, createExpenseSchema } from "@/lib/validation";
+import { internalError } from "@/lib/api-error";
+import * as financeService from "@/services/finance-service";
 
-export async function GET() {
-  try {
-    const result = await db.select().from(expenses).orderBy(desc(expenses.incurredDate));
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch expenses" }, { status: 500 });
-  }
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  return withAuth(request, "finance.read", async () => {
+    try {
+      const rows = await financeService.listExpenses();
+      return NextResponse.json({ data: rows });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const result = await db
-      .insert(expenses)
-      .values({
-        category: body.category,
-        description: body.description,
-        amount: Number(body.amount).toFixed(2),
-        vendor: body.vendor ?? null,
-        incurredDate: body.incurredDate ?? new Date().toISOString().split("T")[0],
-        approvedBy: body.approvedBy ?? null,
-        status: body.status ?? "pending",
-      })
-      .returning();
-    return NextResponse.json(result[0], { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to create expense" }, { status: 500 });
-  }
+  return withAuth(request, "finance.write", async () => {
+    const v = await validateBody(request, createExpenseSchema);
+    if (!v.success) return v.error;
+
+    try {
+      const row = await financeService.createExpense(v.data);
+      return NextResponse.json({ data: row }, { status: 201 });
+    } catch {
+      return internalError();
+    }
+  });
 }

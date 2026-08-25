@@ -1,0 +1,16 @@
+node_modules
+.next
+.freebuff
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+*.log
+docker-compose*.yml
+docker/
+dicom-samples/
+__tests__/
+coverage/
+drizzle/
+*.md

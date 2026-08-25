@@ -1,78 +1,89 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { payments, invoices, patients } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
+import { withAuth } from "@/lib/middleware-helpers";
+import { internalError } from "@/lib/api-error";
 import { generateReceiptNumber } from "@/lib/finance";
 import { recordAudit } from "@/lib/audit";
 
-export async function GET() {
-  try {
-    const result = await db
-      .select({
-        id: payments.id,
-        receiptNumber: payments.receiptNumber,
-        amount: payments.amount,
-        method: payments.method,
-        reference: payments.reference,
-        receivedBy: payments.receivedBy,
-        receivedAt: payments.receivedAt,
-        invoiceNumber: invoices.invoiceNumber,
-        patientFirstName: patients.firstName,
-        patientLastName: patients.lastName,
-        patientMrn: patients.mrn,
-      })
-      .from(payments)
-      .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
-      .leftJoin(patients, eq(payments.patientId, patients.id))
-      .orderBy(desc(payments.receivedAt));
+export const dynamic = "force-dynamic";
 
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch payments" }, { status: 500 });
-  }
+export async function GET(request: NextRequest) {
+  return withAuth(request, "finance.read", async () => {
+    try {
+      const result = await db
+        .select({
+          id: payments.id,
+          receiptNumber: payments.receiptNumber,
+          amount: payments.amount,
+          method: payments.method,
+          reference: payments.reference,
+          receivedBy: payments.receivedBy,
+          receivedAt: payments.receivedAt,
+          invoiceNumber: invoices.invoiceNumber,
+          patientFirstName: patients.firstName,
+          patientLastName: patients.lastName,
+          patientMrn: patients.mrn,
+        })
+        .from(payments)
+        .leftJoin(invoices, eq(payments.invoiceId, invoices.id))
+        .leftJoin(patients, eq(payments.patientId, patients.id))
+        .orderBy(desc(payments.receivedAt));
+
+      return NextResponse.json({ data: result });
+    } catch {
+      return internalError();
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { invoiceId, patientId, amount, method, reference, receivedBy, notes } = body;
-
-    const [payment] = await db
-      .insert(payments)
-      .values({
-        receiptNumber: generateReceiptNumber(),
-        invoiceId,
-        patientId,
-        amount: Number(amount).toFixed(2),
-        method,
-        reference: reference ?? null,
-        receivedBy: receivedBy ?? "system",
-        notes: notes ?? null,
-      })
-      .returning();
-
-    // Update invoice amountPaid & status
-    const [invoice] = await db.select().from(invoices).where(eq(invoices.id, invoiceId));
-    if (invoice) {
-      const newPaid = parseFloat(invoice.amountPaid) + Number(amount);
-      const total = parseFloat(invoice.totalAmount);
-      const newStatus = newPaid >= total ? "paid" : newPaid > 0 ? "partial" : invoice.status;
-      await db
-        .update(invoices)
-        .set({ amountPaid: newPaid.toFixed(2), status: newStatus, updatedAt: new Date() })
-        .where(eq(invoices.id, invoiceId));
+  return withAuth(request, "finance.write", async () => {
+    const body = await request.json().catch(() => null);
+    if (!body?.invoiceId || !body?.patientId || !body?.amount || !body?.method) {
+      return NextResponse.json({ error: { code: "VALIDATION_FAILED", message: "invoiceId, patientId, amount, and method are required" } }, { status: 400 });
     }
 
-    await recordAudit({
-      action: "payment.recorded",
-      module: "finance",
-      entityType: "payment",
-      entityId: payment.id,
-      details: { receiptNumber: payment.receiptNumber, amount, method },
-    });
+    try {
+      const [payment] = await db
+        .insert(payments)
+        .values({
+          receiptNumber: generateReceiptNumber(),
+          invoiceId: body.invoiceId,
+          patientId: body.patientId,
+          amount: Number(body.amount).toFixed(2),
+          method: body.method,
+          reference: body.reference ?? null,
+          receivedBy: body.receivedBy ?? "system",
+          notes: body.notes ?? null,
+        })
+        .returning();
 
-    return NextResponse.json(payment, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to record payment", detail: String(error) }, { status: 500 });
-  }
+      // Update invoice paid amount & status
+      const [invoice] = await db.select().from(invoices).where(eq(invoices.id, body.invoiceId));
+      if (invoice) {
+        const newPaid = parseFloat(invoice.amountPaid) + Number(body.amount);
+        const total = parseFloat(invoice.totalAmount);
+        const newStatus = newPaid >= total ? "paid" : newPaid > 0 ? "partial" : invoice.status;
+        await db
+          .update(invoices)
+          .set({ amountPaid: newPaid.toFixed(2), status: newStatus, updatedAt: new Date() })
+          .where(eq(invoices.id, body.invoiceId));
+      }
+
+      await recordAudit({
+        action: "payment.recorded",
+        module: "finance",
+        entityType: "payment",
+        entityId: payment.id,
+        details: { receiptNumber: payment.receiptNumber, amount: body.amount, method: body.method },
+      });
+
+      return NextResponse.json({ data: payment }, { status: 201 });
+    } catch {
+      return internalError();
+    }
+  });
 }

@@ -1,19 +1,56 @@
-# GeraldOS — Full approved-stack deployment bundle.
-# The Next.js app reads every endpoint from environment variables (see .env.example).
+# GeraldOS — Docker Compose deployment bundle.
+#
+# Core services: app, postgres, redis, orthanc, ohif
+# Optional integrations: keycloak, hapi-fhir, dicoogle, n8n, minio, langgraph
+#
+# Start everything:  docker compose up -d
+# Start core only:  docker compose up -d app postgres redis orthanc ohif
+# View logs:         docker compose logs -f app
+#
+# Environment variables are read from .env (see .env.example for reference).
+
 services:
+
+  # ─── Core: Application ────────────────────────────────────────────────────────
+
+  app:
+    build: .
+    ports: ["3000:3000"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ─── Core: PostgreSQL ─────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: app_db
+      POSTGRES_USER: geraldos_admin
+      POSTGRES_PASSWORD: geraldos_secure_pass
+      POSTGRES_DB: geraldos
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U geraldos_admin -d geraldos"]
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
+
+  # ─── Core: Redis ──────────────────────────────────────────────────────────────
 
   redis:
     image: redis:7
@@ -23,6 +60,114 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
+
+  # ─── Core: Orthanc PACS ──────────────────────────────────────────────────────
+
+  orthanc:
+    image: orthancteam/orthanc:latest
+    environment:
+      ORTHANC__NAME: GeraldOS-PACS
+      ORTHANC__DICOM_WEB__ENABLE: "true"
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: |-
+        {"orthanc": "orthanc_secure_pass"}
+    ports: ["8042:8042"]
+    volumes:
+      - orthancdata:/var/lib/orthanc/db
+      - ./docker/orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-u", "orthanc:orthanc_secure_pass", "http://localhost:8042/system"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+  # ─── Core: OHIF Viewer ───────────────────────────────────────────────────────
+
+  ohif:
+    image: ohif/app:latest
+    ports: ["3001:80"]
+    volumes:
+      - ./ohif-config/app-config.js:/usr/share/nginx/html/app-config.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ─── Optional: Keycloak ──────────────────────────────────────────────────────
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    environment:
+      KC_HOSTNAME: localhost
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports: ["8180:8080"]
+    volumes: [keycloakdata:/opt/keycloak/data]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200\\|UP' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ─── Optional: HAPI FHIR ─────────────────────────────────────────────────────
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    ports: ["8090:8080"]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/geraldos
+      SPRING_DATASOURCE_USERNAME: geraldos_admin
+      SPRING_DATASOURCE_PASSWORD: geraldos_secure_pass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/fhir/metadata || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+
+  # ─── Optional: Dicoogle ──────────────────────────────────────────────────────
+
+  dicoogle:
+    image: bioinformatics-ua/dicoogle:latest
+    ports: ["8095:8081"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://localhost:8081/search?query=*' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ─── Optional: n8n ───────────────────────────────────────────────────────────
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports: ["5678:5678"]
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      WEBHOOK_URL: http://localhost:5678/
+    volumes: [n8ndata:/home/node/.n8n]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # ─── Optional: MinIO ─────────────────────────────────────────────────────────
 
   minio:
     image: minio/minio:latest
@@ -37,77 +182,29 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
-  orthanc:
-    image: orthancteam/orthanc:latest
-    environment:
-      ORTHANC__NAME: GeraldOS-PACS
-      ORTHANC__DICOM_WEB__ENABLE: "true"
-      ORTHANC__AUTHENTICATION_ENABLED: "true"
-      ORTHANC__REGISTERED_USERS: |-
-        {"orthanc": "orthanc"}
-    ports: ["8042:8042"]
-    volumes: [orthancdata:/var/lib/orthanc/db]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8042/system"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:latest
-    command: start-dev
-    environment:
-      KC_HOSTNAME: localhost
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-    ports: ["8180:8080"]
-    volumes: [keycloakdata:/opt/keycloak/data]
-
-  hapi-fhir:
-    image: hapiproject/hapi:latest
-    ports: ["8090:8080"]
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/app_db
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  dicoogle:
-    image: bioinformatics-ua/dicoogle:latest
-    ports: ["8095:8080"]
-
-  n8n:
-    image: n8nio/n8n:latest
-    ports: ["5678:5678"]
-    environment:
-      N8N_SECURE_COOKIE: "false"
-      WEBHOOK_URL: http://localhost:5678/
-    volumes: [n8ndata:/home/node/.n8n]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-
-  ohif:
-    image: ohif/app:latest
-    ports: ["3001:80"]
+  # ─── Optional: LangGraph ─────────────────────────────────────────────────────
 
   langgraph:
-    # LangGraph Platform self-hosted runtime (requires LANGSMITH_API_KEY).
-    # For local graphs: `langgraph dev` also exposes the same /ok + /threads API on :8123.
     image: langchain/langgraph-api:latest
     ports: ["8123:8000"]
     environment:
       REDIS_URI: redis://redis:6379
-      DATABASE_URI: postgres://postgres:postgres@postgres:5432/app_db
+      DATABASE_URI: postgres://geraldos_admin:geraldos_secure_pass@postgres:5432/geraldos
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/ok || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
 volumes:
   pgdata:

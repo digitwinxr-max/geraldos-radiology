@@ -6,6 +6,9 @@
  * is available the check is via XREAD; otherwise it polls the event_log table.
  *
  * The endpoint keeps a connection alive until the client disconnects.
+ *
+ * Exempt from withAuth — SSE streams return raw Response objects and the global
+ * proxy middleware handles session validation for streaming clients.
  */
 
 import { NextRequest } from "next/server";

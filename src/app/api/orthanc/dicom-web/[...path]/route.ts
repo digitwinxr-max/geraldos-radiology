@@ -11,11 +11,15 @@ export const runtime = "nodejs";
  * the Next.js origin only (no CORS needed) and Orthanc credentials never leave
  * the server. Supports QIDO-RS (GET studies/series/instances), WADO-RS (GET
  * instances/frames, multipart/related) and STOW-RS (POST/upload).
+ *
+ * Exempt from withAuth — the global proxy middleware handles session validation,
+ * and this route returns raw binary/multipart responses incompatible with the
+ * structured error wrapper.
  */
 async function proxy(request: NextRequest, segments: string[]) {
   const { url } = integrationConfig.orthanc;
   if (!url) {
-    return new Response(JSON.stringify({ error: "Orthanc is not configured (ORTHANC_URL)" }), {
+    return new Response(JSON.stringify({ error: { code: "NOT_CONFIGURED", message: "Orthanc is not configured (ORTHANC_URL)" } }), {
       status: 503,
       headers: { "content-type": "application/json" },
     });
@@ -27,7 +31,7 @@ async function proxy(request: NextRequest, segments: string[]) {
     .filter(Boolean)
     .join("/");
   if (segments.some((s) => s.includes("..") || s.includes("\\"))) {
-    return new Response(JSON.stringify({ error: "invalid proxy path" }), {
+    return new Response(JSON.stringify({ error: { code: "VALIDATION_FAILED", message: "Invalid proxy path" } }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
@@ -62,9 +66,9 @@ async function proxy(request: NextRequest, segments: string[]) {
         "access-control-allow-origin": "*",
       },
     });
-  } catch (error) {
+  } catch {
     return new Response(
-      JSON.stringify({ error: "Orthanc unreachable", detail: error instanceof Error ? error.message : String(error) }),
+      JSON.stringify({ error: { code: "INTEGRATION_ERROR", message: "Orthanc unreachable" } }),
       { status: 502, headers: { "content-type": "application/json" } }
     );
   }
