@@ -39,7 +39,7 @@ export function Header({ title, description }: { title: string; description?: st
         {/* Command palette trigger */}
         <button
           onClick={() => setPaletteOpen(true)}
-          className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-600 md:flex dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-300"
+          className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand md:flex dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-300"
         >
           <Command className="h-3.5 w-3.5" />
           <span>Search or run…</span>
@@ -49,7 +49,8 @@ export function Header({ title, description }: { title: string; description?: st
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:text-slate-400 dark:hover:bg-slate-800"
           title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         >
           {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -72,7 +73,7 @@ export function Header({ title, description }: { title: string; description?: st
                 ))}
               </div>
             </div>
-            <a href="/api/auth/logout" title="Sign out">
+            <a href="/api/auth/logout" title="Sign out" aria-label="Sign out">
               <Button variant="ghost" size="icon">
                 <LogOut className="h-4 w-4 text-slate-400" />
               </Button>

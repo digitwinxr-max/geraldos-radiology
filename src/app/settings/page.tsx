@@ -115,10 +115,10 @@ export default function SettingsPage() {
                       </div>
                     )}
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-slate-500">
-                        Environment variable
+                      <label className="block text-xs font-medium text-slate-500">
+                        <span className="mb-1 block">Environment variable</span>
+                        <Input value={hint?.env ?? ""} readOnly className="bg-slate-50 font-mono text-xs" />
                       </label>
-                      <Input value={hint?.env ?? ""} readOnly className="bg-slate-50 font-mono text-xs" />
                       {hint && <p className="mt-1 text-xs text-slate-400">{hint.hintPath}</p>}
                     </div>
                   </CardContent>

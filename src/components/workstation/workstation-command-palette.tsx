@@ -66,12 +66,19 @@ export function WorkstationCommandPalette({ open, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Restore focus to the opener when the palette closes.
+  const prevFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (open) {
+      prevFocusRef.current = (document.activeElement as HTMLElement) ?? null;
       setQuery("");
       setSelectedIdx(0);
       setTimeout(() => inputRef.current?.focus(), 30);
+    } else {
+      prevFocusRef.current?.focus();
+      prevFocusRef.current = null;
     }
   }, [open]);
 
@@ -316,17 +323,45 @@ export function WorkstationCommandPalette({ open, onClose }: Props) {
 
   if (!open) return null;
 
+  // Keep Tab cycling inside the palette while it is open.
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const focusables = panelRef.current.querySelectorAll<HTMLElement>("input, button:not([disabled])");
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  const activeOption = filtered[selectedIdx];
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Workstation command palette"
+      onKeyDown={trapTab}
       className="fixed inset-0 z-[60] flex items-start justify-center bg-slate-950/50 pt-[12vh] backdrop-blur-sm"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+      <div ref={panelRef} className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
         {/* Search input */}
         <div className="flex items-center gap-3 border-b border-slate-100 px-4 dark:border-slate-800">
           <Search className="h-4 w-4 text-slate-400" />
           <input
             ref={inputRef}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="ws-command-palette-listbox"
+            aria-activedescendant={activeOption ? `ws-command-palette-option-${activeOption.id}` : undefined}
+            aria-autocomplete="list"
+            aria-label="Search workstation commands"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -344,23 +379,26 @@ export function WorkstationCommandPalette({ open, onClose }: Props) {
         </div>
 
         {/* Commands */}
-        <div className="max-h-80 overflow-y-auto p-2">
+        <div id="ws-command-palette-listbox" role="listbox" aria-label="Workstation commands" className="max-h-80 overflow-y-auto p-2">
           {groups.length === 0 && (
             <p className="px-3 py-8 text-center text-sm text-slate-400">No matching commands</p>
           )}
           {groups.map(([group, items]) => (
-            <div key={group}>
-              <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{group}</p>
+            <div key={group} role="presentation">
+              <p role="presentation" className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{group}</p>
               {items.map((cmd) => {
                 const idx = filtered.indexOf(cmd);
                 return (
                   <button
                     key={cmd.id}
+                    id={`ws-command-palette-option-${cmd.id}`}
+                    role="option"
+                    aria-selected={idx === selectedIdx}
                     onMouseEnter={() => setSelectedIdx(idx)}
                     onClick={() => { if (!cmd.disabled) cmd.action(); }}
                     disabled={cmd.disabled}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
                       cmd.disabled
                         ? "cursor-not-allowed opacity-40"
                         : idx === selectedIdx

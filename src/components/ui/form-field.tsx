@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export interface FormFieldProps {
   label: string;
@@ -10,18 +11,19 @@ export interface FormFieldProps {
 }
 
 /**
- * Label + control wrapper used across every dialog form:
- * `<div><label className="mb-1 block text-sm font-medium text-slate-700">…</label>{control}</div>`.
- * Children (Input/Select) render unchanged.
+ * Label + control wrapper used across every dialog form. The control renders
+ * inside the <label> so the association is programmatic (no ids needed); the
+ * inner block span reproduces the previous `<label class="mb-1 block ...">`
+ * layout exactly, so visual output is unchanged.
  */
 export function FormField({ label, required = false, className, children }: FormFieldProps) {
   return (
-    <div className={className}>
-      <label className="mb-1 block text-sm font-medium text-slate-700">
+    <label className={cn("block", className)}>
+      <span className="mb-1 block text-sm font-medium text-slate-700">
         {label}
         {required ? " *" : ""}
-      </label>
+      </span>
       {children}
-    </div>
+    </label>
   );
 }

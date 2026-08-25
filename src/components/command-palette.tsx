@@ -40,12 +40,19 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Restore focus to the opener when the palette closes.
+  const prevFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (paletteOpen) {
+      prevFocusRef.current = (document.activeElement as HTMLElement) ?? null;
       setQuery("");
       setSelected(0);
       setTimeout(() => inputRef.current?.focus(), 30);
+    } else {
+      prevFocusRef.current?.focus();
+      prevFocusRef.current = null;
     }
   }, [paletteOpen]);
 
@@ -95,16 +102,44 @@ export function CommandPalette() {
 
   const run = (cmd: Command) => cmd.action();
 
+  // Keep Tab cycling inside the palette while it is open.
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const focusables = panelRef.current.querySelectorAll<HTMLElement>("input, button:not([disabled])");
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  const activeOption = filtered[selected];
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+      onKeyDown={trapTab}
       className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 pt-[15vh] backdrop-blur-sm"
       onMouseDown={(e) => { if (e.target === e.currentTarget) setPaletteOpen(false); }}
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+      <div ref={panelRef} className="w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center gap-3 border-b border-slate-100 px-4 dark:border-slate-800">
           <Search className="h-4 w-4 text-slate-400" />
           <input
             ref={inputRef}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-palette-listbox"
+            aria-activedescendant={activeOption ? `command-palette-option-${activeOption.id}` : undefined}
+            aria-autocomplete="list"
+            aria-label="Search pages, tools and actions"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -118,22 +153,25 @@ export function CommandPalette() {
           />
           <kbd className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 dark:border-slate-700">ESC</kbd>
         </div>
-        <div className="max-h-96 overflow-y-auto p-2">
+        <div id="command-palette-listbox" role="listbox" aria-label="Commands" className="max-h-96 overflow-y-auto p-2">
           {groups.length === 0 && (
             <p className="px-3 py-8 text-center text-sm text-slate-400">No matching commands</p>
           )}
           {groups.map(([group, items]) => (
-            <div key={group}>
-              <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{group}</p>
-              {items.map((cmd, i) => {
+            <div key={group} role="presentation">
+              <p role="presentation" className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{group}</p>
+              {items.map((cmd) => {
                 const idx = filtered.indexOf(cmd);
                 return (
                   <button
                     key={cmd.id}
+                    id={`command-palette-option-${cmd.id}`}
+                    role="option"
+                    aria-selected={idx === selected}
                     onMouseEnter={() => setSelected(idx)}
                     onClick={() => run(cmd)}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
                       idx === selected ? "bg-brand-soft text-brand-text" : "text-slate-700 dark:text-slate-200"
                     )}
                   >

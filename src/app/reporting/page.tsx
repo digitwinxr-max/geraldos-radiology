@@ -474,13 +474,15 @@ export default function ReportingPage() {
               <Card>
                 <CardContent className="p-4">
                   <div className="flex flex-wrap items-center gap-3">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Template</label>
-                    <Select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="max-w-md">
-                      <option value="">Auto-recommend (modality match)</option>
-                      {templates.map((t) => (
-                        <option key={t.id} value={t.id}>{t.name} · {t.modality}</option>
-                      ))}
-                    </Select>
+                    <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Template
+                      <Select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="max-w-md">
+                        <option value="">Auto-recommend (modality match)</option>
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name} · {t.modality}</option>
+                        ))}
+                      </Select>
+                    </label>
                     {currentTemplate && <Badge variant="success" className="text-[10px]">{currentTemplate.name}</Badge>}
                   </div>
                   {assist?.reminder && (
@@ -525,9 +527,9 @@ export default function ReportingPage() {
                     </div>
                   )}
 
-                  <div>
+                  <label className="block">
                     <div className="mb-1 flex items-center justify-between">
-                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Findings</label>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Findings</span>
                       <Badge variant="outline" className="text-[9px]"><Ruler className="mr-0.5 h-2.5 w-2.5" />{assist?.measurements.length ?? 0} measurements</Badge>
                     </div>
                     <textarea
@@ -536,25 +538,25 @@ export default function ReportingPage() {
                       placeholder="Describe findings organised by region…"
                       className="min-h-40 w-full rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Impression</label>
+                  </label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <span className="mb-1 block">Impression</span>
                     <textarea
                       value={impression}
                       onChange={(e) => setImpression(e.target.value)}
                       placeholder="Concise clinical summary…"
                       className="min-h-24 w-full rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Recommendation</label>
+                  </label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <span className="mb-1 block">Recommendation</span>
                     <textarea
                       value={recommendation}
                       onChange={(e) => setRecommendation(e.target.value)}
                       placeholder="Follow-up or management suggestions…"
                       className="min-h-20 w-full rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     />
-                  </div>
+                  </label>
                 </CardContent>
               </Card>
             </>

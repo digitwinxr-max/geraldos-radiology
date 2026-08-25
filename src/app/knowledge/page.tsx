@@ -380,41 +380,55 @@ export default function KnowledgePage() {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Title</label>
-                <Input value={newDoc.title} onChange={(e) => setNewDoc({ ...newDoc, title: e.target.value })} placeholder="e.g. CT Contrast Administration Protocol" />
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <span className="mb-1 block">Title</span>
+                  <Input value={newDoc.title} onChange={(e) => setNewDoc({ ...newDoc, title: e.target.value })} placeholder="e.g. CT Contrast Administration Protocol" />
+                </label>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Category</label>
-                <Select value={newDoc.category} onChange={(e) => setNewDoc({ ...newDoc, category: e.target.value })}>
-                  {KNOWLEDGE_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-                </Select>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <span className="mb-1 block">Category</span>
+                  <Select value={newDoc.category} onChange={(e) => setNewDoc({ ...newDoc, category: e.target.value })}>
+                    {KNOWLEDGE_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                  </Select>
+                </label>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Doc type</label>
-                <Select value={newDoc.docType} onChange={(e) => setNewDoc({ ...newDoc, docType: e.target.value })}>
-                  {["sop", "guide", "protocol", "manual", "policy", "checklist", "template", "standard"].map((t) => <option key={t} value={t}>{t}</option>)}
-                </Select>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <span className="mb-1 block">Doc type</span>
+                  <Select value={newDoc.docType} onChange={(e) => setNewDoc({ ...newDoc, docType: e.target.value })}>
+                    {["sop", "guide", "protocol", "manual", "policy", "checklist", "template", "standard"].map((t) => <option key={t} value={t}>{t}</option>)}
+                  </Select>
+                </label>
               </div>
               <div className="col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Summary</label>
-                <Input value={newDoc.summary} onChange={(e) => setNewDoc({ ...newDoc, summary: e.target.value })} placeholder="One-line summary shown in search results" />
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <span className="mb-1 block">Summary</span>
+                  <Input value={newDoc.summary} onChange={(e) => setNewDoc({ ...newDoc, summary: e.target.value })} placeholder="One-line summary shown in search results" />
+                </label>
               </div>
               <div className="col-span-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Content (markdown-ish: # headings, - bullets)</label>
-                <textarea
-                  value={newDoc.content}
-                  onChange={(e) => setNewDoc({ ...newDoc, content: e.target.value })}
-                  placeholder={"# Purpose\n\nDescribe the procedure…\n\n## Steps\n- Step one\n- Step two"}
-                  className="min-h-40 w-full rounded-md border border-slate-300 bg-white p-3 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                />
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <span className="mb-1 block">Content (markdown-ish: # headings, - bullets)</span>
+                  <textarea
+                    value={newDoc.content}
+                    onChange={(e) => setNewDoc({ ...newDoc, content: e.target.value })}
+                    placeholder={"# Purpose\n\nDescribe the procedure…\n\n## Steps\n- Step one\n- Step two"}
+                    className="min-h-40 w-full rounded-md border border-slate-300 bg-white p-3 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                </label>
               </div>
               <div className="col-span-1">
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Tags (comma separated)</label>
-                <Input value={newDoc.tags} onChange={(e) => setNewDoc({ ...newDoc, tags: e.target.value })} placeholder="contrast, safety, renal" />
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <span className="mb-1 block">Tags (comma separated)</span>
+                  <Input value={newDoc.tags} onChange={(e) => setNewDoc({ ...newDoc, tags: e.target.value })} placeholder="contrast, safety, renal" />
+                </label>
               </div>
               <div className="col-span-1">
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Version</label>
-                <Input value={newDoc.version} onChange={(e) => setNewDoc({ ...newDoc, version: e.target.value })} />
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <span className="mb-1 block">Version</span>
+                  <Input value={newDoc.version} onChange={(e) => setNewDoc({ ...newDoc, version: e.target.value })} />
+                </label>
               </div>
             </div>
             <div className="flex justify-end gap-2">

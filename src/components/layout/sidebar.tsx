@@ -79,7 +79,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav aria-label="Primary" className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navigation.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
           const active = isActive;
@@ -89,7 +89,7 @@ export function Sidebar() {
               href={item.href}
               title={sidebarCollapsed ? item.name : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-lg py-2.5 text-sm font-medium transition-colors",
+                "flex items-center gap-3 rounded-lg py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
                 sidebarCollapsed ? "justify-center px-0" : "px-3",
                 active
                   ? "bg-brand-soft text-brand-text"
@@ -121,7 +121,8 @@ export function Sidebar() {
           {!sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              aria-label="Collapse sidebar"
+              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-slate-800 dark:hover:text-slate-300"
               title="Collapse sidebar (Ctrl+B)"
             >
               <PanelLeftClose className="h-4 w-4" />
@@ -131,7 +132,8 @@ export function Sidebar() {
         {sidebarCollapsed && (
           <button
             onClick={toggleSidebar}
-            className="mt-3 flex w-full items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            aria-label="Expand sidebar"
+            className="mt-3 flex w-full items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-slate-800 dark:hover:text-slate-300"
             title="Expand sidebar (Ctrl+B)"
           >
             <PanelLeftOpen className="h-4 w-4" />

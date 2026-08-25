@@ -38,7 +38,7 @@
   --color-brand-hover: var(--color-gerald-azure-deep);
   --color-brand-active: #1683b1;
   --color-brand-soft: var(--color-gerald-azure-soft);
-  --color-brand-text: #0e76a3;
+  --color-brand-text: #0d6e97; /* WCAG 4.5:1 on white (5.68) and azure-soft (5.02) */
 
   /* ── Semantic: AI (Violet) ── */
   --color-ai: var(--color-gerald-violet);
@@ -52,7 +52,7 @@
   --color-premium-hover: var(--color-gerald-gold-deep);
   --color-premium-active: #a38b1e;
   --color-premium-soft: var(--color-gerald-gold-soft);
-  --color-premium-text: #8a6f1b;
+  --color-premium-text: #7a6118; /* WCAG 4.5:1 on white (5.91) and gold-soft (5.17) */
 
   /* ── Semantic: operational health (Green) ── */
   --color-operational: var(--color-gerald-green);

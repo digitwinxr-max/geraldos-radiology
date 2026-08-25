@@ -436,7 +436,7 @@ export default function CommandCentrePage() {
             </CardTitle>
             <CardDescription>Every major event from the platform event bus</CardDescription>
           </CardHeader>
-          <CardContent className="max-h-[24rem] space-y-0 overflow-y-auto">
+          <CardContent aria-live="polite" aria-label="Platform event feed" className="max-h-[24rem] space-y-0 overflow-y-auto">
             {events.map((e) => (
               <div key={e.id} className="flex items-start gap-3 border-b border-slate-50 py-2.5 last:border-0 dark:border-slate-800">
                 <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-brand" />

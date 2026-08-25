@@ -150,7 +150,7 @@ export default function WorkflowPage() {
             )}
             <button
               onClick={() => studiesQuery.refetch()}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-brand transition-colors hover:bg-brand-soft dark:hover:bg-slate-800"
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-brand-text transition-colors hover:bg-brand-soft dark:hover:bg-slate-800"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
             </button>

@@ -27,7 +27,7 @@ const TYPE_ICON: Record<string, { icon: React.ElementType; className: string }> 
   alert: { icon: AlertTriangle, className: "text-amber-600 dark:text-amber-400" },
   warning: { icon: AlertTriangle, className: "text-amber-600 dark:text-amber-400" },
   success: { icon: CheckCircle, className: "text-emerald-600 dark:text-emerald-400" },
-  info: { icon: Info, className: "text-brand" },
+  info: { icon: Info, className: "text-brand-text" },
 };
 
 export function NotificationCentre() {
@@ -70,7 +70,9 @@ export function NotificationCentre() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+        aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+        aria-expanded={open}
+        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:text-slate-400 dark:hover:bg-slate-800"
         title="Notification centre"
       >
         <Bell className="h-5 w-5" />
@@ -82,14 +84,19 @@ export function NotificationCentre() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div
+          role="region"
+          aria-label="Notifications"
+          className="absolute right-0 top-11 z-50 w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
             <div>
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Notifications</p>
-              <p className="text-xs text-slate-400">{unread} unread</p>
+              {/* role=status announces poll-driven unread changes politely. */}
+              <p role="status" className="text-xs text-slate-400">{unread} unread</p>
             </div>
             {unread > 0 && (
-              <button onClick={markAllRead} className="flex items-center gap-1 text-xs font-medium text-brand-text hover:text-brand-active">
+              <button onClick={markAllRead} className="flex items-center gap-1 rounded text-xs font-medium text-brand-text hover:text-brand-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
                 <CheckCheck className="h-3.5 w-3.5" />
                 Mark all read
               </button>
@@ -109,7 +116,11 @@ export function NotificationCentre() {
                     {n.body && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{n.body}</p>}
                     <p className="mt-0.5 text-[10px] text-slate-400">{new Date(n.createdAt).toLocaleString()}</p>
                   </div>
-                  <button onClick={() => dismiss(n.id)} className="hidden text-slate-300 hover:text-slate-500 group-hover:block dark:text-slate-600">
+                  <button
+                    onClick={() => dismiss(n.id)}
+                    aria-label="Dismiss notification"
+                    className="hidden rounded text-slate-300 hover:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand group-hover:block dark:text-slate-600"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
