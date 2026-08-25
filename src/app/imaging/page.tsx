@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Search,
   Maximize,
@@ -444,7 +445,7 @@ export default function ImagingPage() {
                   <p className="mt-0.5 truncate text-[10px] text-slate-500">{s.subtitle}</p>
                 </button>
               ))}
-              {allStudies.length === 0 && <p className="px-3 py-6 text-center text-xs text-slate-500">No studies found</p>}
+              {allStudies.length === 0 && <EmptyState className="px-3 text-xs text-slate-500">No studies found</EmptyState>}
             </div>
           </div>
           <div
@@ -560,9 +561,9 @@ export default function ImagingPage() {
                   </div>
                 ))}
                 {studyDetail && studyDetail.study.series.length === 0 && (
-                  <p className="py-8 text-center text-xs text-slate-500">No series on the PACS for this study</p>
+                  <EmptyState padding="py-8" className="text-xs text-slate-500">No series on the PACS for this study</EmptyState>
                 )}
-                {!studyDetail && <p className="py-8 text-center text-xs text-slate-500">Select a PACS study to list series</p>}
+                {!studyDetail && <EmptyState padding="py-8" className="text-xs text-slate-500">Select a PACS study to list series</EmptyState>}
               </TabsContent>
 
               <TabsContent value="ai" className="flex-1 overflow-y-auto p-3">
@@ -606,7 +607,7 @@ export default function ImagingPage() {
                   </div>
                 ))}
                 {observations.length === 0 && (
-                  <p className="py-8 text-center text-xs text-slate-500">Run an AI review to generate candidate observations</p>
+                  <EmptyState padding="py-8" className="text-xs text-slate-500">Run an AI review to generate candidate observations</EmptyState>
                 )}
               </TabsContent>
 
@@ -646,7 +647,7 @@ export default function ImagingPage() {
                     </button>
                   </div>
                 ))}
-                {annotations.length === 0 && <p className="py-6 text-center text-xs text-slate-500">No saved measurements yet</p>}
+                {annotations.length === 0 && <EmptyState className="text-xs text-slate-500">No saved measurements yet</EmptyState>}
               </TabsContent>
 
               <TabsContent value="book" className="flex-1 overflow-y-auto p-3">
@@ -661,7 +662,7 @@ export default function ImagingPage() {
                     <p className="mt-0.5 text-[9px] text-slate-600">{new Date(b.createdAt).toLocaleDateString()}</p>
                   </div>
                 ))}
-                {bookmarks.length === 0 && <p className="py-6 text-center text-xs text-slate-500">Bookmark studies to build a worklist</p>}
+                {bookmarks.length === 0 && <EmptyState className="text-xs text-slate-500">Bookmark studies to build a worklist</EmptyState>}
               </TabsContent>
             </Tabs>
           </div>

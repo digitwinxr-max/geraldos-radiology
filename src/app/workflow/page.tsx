@@ -5,6 +5,8 @@ import { Shell } from "@/components/layout/shell";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PriorityBadge } from "@/components/ui/status-badge";
 import {
   ArrowRight,
   GitBranch,
@@ -148,12 +150,6 @@ export default function WorkflowPage() {
 
   const archive = (s: Study) => run(s.id, { action: "transition", to: "archived" }, "Archived");
 
-  const priorityBadge = (p: string) => {
-    if (p === "stat") return <Badge variant="destructive">STAT</Badge>;
-    if (p === "urgent") return <Badge variant="warning">Urgent</Badge>;
-    return <Badge variant="secondary">Routine</Badge>;
-  };
-
   const stageIndex = (key: string) => STAGES.findIndex((s) => s.key === key);
 
   const studiesByStage = useMemo(
@@ -221,7 +217,7 @@ export default function WorkflowPage() {
               </div>
               <div className="flex-1 space-y-2.5 overflow-y-auto p-2.5">
                 {stage.studies.length === 0 && (
-                  <p className="py-8 text-center text-[11px] text-slate-400">No studies</p>
+                  <EmptyState padding="py-8" className="text-[11px]">No studies</EmptyState>
                 )}
                 {stage.studies.map((study) => {
                   const next = STAGES[stageIndex(study.stage) + 1]?.key;
@@ -245,7 +241,7 @@ export default function WorkflowPage() {
                           </p>
                           <p className="font-mono text-[10px] text-slate-400">{study.patientMrn}</p>
                         </div>
-                        {priorityBadge(study.priority)}
+                        <PriorityBadge priority={study.priority} />
                       </div>
                       <p className="mt-2 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{study.procedure}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">

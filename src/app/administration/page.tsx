@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyStateRow } from "@/components/ui/empty-state";
+import { FormField } from "@/components/ui/form-field";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Dialog,
   DialogContent,
@@ -129,39 +133,9 @@ export default function AdministrationPage() {
     <Shell title="Administration" description="Staff, branches, roles & permissions, and organisational management">
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-soft">
-              <Users className="h-6 w-6 text-brand" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{employees.length}</p>
-              <p className="text-sm text-slate-500">Employees</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50">
-              <Building2 className="h-6 w-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{branchesList.length}</p>
-              <p className="text-sm text-slate-500">Branches</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-ai-soft">
-              <ShieldCheck className="h-6 w-6 text-ai" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{rolesList.length}</p>
-              <p className="text-sm text-slate-500">Roles Configured</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={Users} value={employees.length} label="Employees" tone="text-brand bg-brand-soft" />
+        <StatCard icon={Building2} value={branchesList.length} label="Branches" tone="text-emerald-600 bg-emerald-50" />
+        <StatCard icon={ShieldCheck} value={rolesList.length} label="Roles Configured" tone="text-ai bg-ai-soft" />
       </div>
 
       <Tabs defaultValue="staff">
@@ -190,44 +164,37 @@ export default function AdministrationPage() {
                       <DialogDescription>Create an HR record for an existing staff member.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleAddEmployee} className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Staff Member *</label>
+                      <FormField label="Staff Member" required>
                         <Select name="staffId" required>
                           <option value="">Select staff...</option>
                           {unassignedStaff.map((s) => (
                             <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
                           ))}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Department</label>
+                      </FormField>
+                      <FormField label="Department">
                         <Input name="department" placeholder="e.g. Radiology" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Branch</label>
+                      </FormField>
+                      <FormField label="Branch">
                         <Select name="branchId">
                           <option value="">Unassigned</option>
                           {branchesList.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Employment Type</label>
+                      </FormField>
+                      <FormField label="Employment Type">
                         <Select name="employmentType">
                           {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Start Date</label>
+                      </FormField>
+                      <FormField label="Start Date">
                         <Input name="startDate" type="date" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Monthly Salary (BWP)</label>
+                      </FormField>
+                      <FormField label="Monthly Salary (BWP)">
                         <Input name="monthlySalary" type="number" step="0.01" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Hourly Rate (BWP)</label>
+                      </FormField>
+                      <FormField label="Hourly Rate (BWP)">
                         <Input name="hourlyRate" type="number" step="0.01" />
-                      </div>
+                      </FormField>
                       <div className="flex justify-end gap-3 pt-2">
                         <Button type="button" variant="outline" onClick={() => setEmployeeDialogOpen(false)}>Cancel</Button>
                         <Button type="submit">Add Record</Button>
@@ -254,7 +221,7 @@ export default function AdministrationPage() {
                 </TableHeader>
                 <TableBody>
                   {employees.length === 0 ? (
-                    <TableRow><TableCell colSpan={9} className="py-12 text-center text-slate-400">No employee records.</TableCell></TableRow>
+                    <EmptyStateRow colSpan={9}>No employee records.</EmptyStateRow>
                   ) : (
                     employees.map((emp) => (
                       <TableRow key={emp.id}>
@@ -268,7 +235,7 @@ export default function AdministrationPage() {
                           {emp.monthlySalary ? `${money(emp.monthlySalary)}/mo` : emp.hourlyRate ? `${money(emp.hourlyRate)}/hr` : "—"}
                         </TableCell>
                         <TableCell>{emp.startDate ? formatDate(emp.startDate) : "—"}</TableCell>
-                        <TableCell><Badge variant={emp.status === "active" ? "success" : "secondary"}>{emp.status}</Badge></TableCell>
+                        <TableCell><StatusBadge status={emp.status} /></TableCell>
                       </TableRow>
                     ))
                   )}
@@ -297,30 +264,24 @@ export default function AdministrationPage() {
                       <DialogDescription>Register a new imaging centre location.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleAddBranch} className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Name *</label>
+                      <FormField label="Name" required>
                         <Input name="name" required />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Code *</label>
+                      </FormField>
+                      <FormField label="Code" required>
                         <Input name="code" required placeholder="e.g. BR-CPT" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Address</label>
+                      </FormField>
+                      <FormField label="Address">
                         <Input name="address" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
+                      </FormField>
+                      <FormField label="Phone">
                         <Input name="phone" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+                      </FormField>
+                      <FormField label="Email">
                         <Input name="email" type="email" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Manager</label>
+                      </FormField>
+                      <FormField label="Manager">
                         <Input name="managerName" />
-                      </div>
+                      </FormField>
                       <div className="flex justify-end gap-3 pt-2">
                         <Button type="button" variant="outline" onClick={() => setBranchDialogOpen(false)}>Cancel</Button>
                         <Button type="submit">Add Branch</Button>
@@ -347,7 +308,7 @@ export default function AdministrationPage() {
                             <p className="font-mono text-xs text-slate-400">{b.code}</p>
                           </div>
                         </div>
-                        <Badge variant={b.status === "active" ? "success" : "secondary"}>{b.status}</Badge>
+                        <StatusBadge status={b.status} />
                       </div>
                       <div className="mt-3 space-y-1 text-sm text-slate-500">
                         {b.address && <p>{b.address}</p>}

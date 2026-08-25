@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyStateRow } from "@/components/ui/empty-state";
+import { FormField } from "@/components/ui/form-field";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Dialog,
   DialogContent,
@@ -196,70 +200,16 @@ export default function FinancePage() {
     fetchAll();
   };
 
-  const invoiceStatusBadge = (s: string) => {
-    const map: Record<string, "success" | "warning" | "destructive" | "secondary" | "default"> = {
-      paid: "success", partial: "warning", sent: "default", overdue: "destructive", draft: "secondary", written_off: "secondary",
-    };
-    return <Badge variant={map[s] || "secondary"}>{s.replace(/_/g, " ")}</Badge>;
-  };
-
-  const claimStatusBadge = (s: string) => {
-    const map: Record<string, "success" | "warning" | "destructive" | "secondary" | "default"> = {
-      paid: "success", approved: "success", partially_approved: "warning", pending: "warning", submitted: "default", rejected: "destructive",
-    };
-    return <Badge variant={map[s] || "secondary"}>{s.replace(/_/g, " ")}</Badge>;
-  };
-
   const unpaidInvoices = invoices.filter((i) => i.status !== "paid" && i.status !== "written_off");
 
   return (
     <Shell title="Finance" description="Billing, receipting, insurance claims and revenue management">
       {/* KPI Row */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-premium-soft">
-              <TrendingUp className="h-6 w-6 text-premium" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{analytics ? money(analytics.totalInvoiced) : "—"}</p>
-              <p className="text-sm text-slate-500">Total Invoiced</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-operational-soft">
-              <Wallet className="h-6 w-6 text-operational" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{analytics ? money(analytics.totalCollected) : "—"}</p>
-              <p className="text-sm text-slate-500">Total Collected</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-premium-soft">
-              <FileWarning className="h-6 w-6 text-premium" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{analytics ? money(analytics.outstanding) : "—"}</p>
-              <p className="text-sm text-slate-500">Outstanding</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-50">
-              <Banknote className="h-6 w-6 text-red-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{analytics ? money(analytics.totalExpenses) : "—"}</p>
-              <p className="text-sm text-slate-500">Total Expenses</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={TrendingUp} value={analytics ? money(analytics.totalInvoiced) : "—"} label="Total Invoiced" tone="text-premium bg-premium-soft" />
+        <StatCard icon={Wallet} value={analytics ? money(analytics.totalCollected) : "—"} label="Total Collected" tone="text-operational bg-operational-soft" />
+        <StatCard icon={FileWarning} value={analytics ? money(analytics.outstanding) : "—"} label="Outstanding" tone="text-premium bg-premium-soft" />
+        <StatCard icon={Banknote} value={analytics ? money(analytics.totalExpenses) : "—"} label="Total Expenses" tone="text-red-600 bg-red-50" />
       </div>
 
       <Tabs defaultValue="invoices">
@@ -289,38 +239,33 @@ export default function FinancePage() {
                       <DialogDescription>Bill a patient for a procedure from the price list.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleCreateInvoice} className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Patient *</label>
+                      <FormField label="Patient" required>
                         <Select name="patientId" required>
                           <option value="">Select patient...</option>
                           {patientsList.map((p) => (
                             <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.mrn})</option>
                           ))}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Procedure (Tariff) *</label>
+                      </FormField>
+                      <FormField label="Procedure (Tariff)" required>
                         <Select name="tariffId" required>
                           <option value="">Select procedure...</option>
                           {tariffList.map((t) => (
                             <option key={t.id} value={t.id}>{t.code} — {t.description}</option>
                           ))}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Billing Type *</label>
+                      </FormField>
+                      <FormField label="Billing Type" required>
                         <Select name="billingType" required>
                           {BILLING_TYPES.map((b) => <option key={b} value={b}>{b.replace(/_/g, " ")}</option>)}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Insurance Provider</label>
+                      </FormField>
+                      <FormField label="Insurance Provider">
                         <Input name="insuranceProvider" placeholder="e.g. Discovery Health" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Policy Number</label>
+                      </FormField>
+                      <FormField label="Policy Number">
                         <Input name="insurancePolicyNumber" />
-                      </div>
+                      </FormField>
                       <div className="flex justify-end gap-3 pt-2">
                         <Button type="button" variant="outline" onClick={() => setInvoiceDialogOpen(false)}>Cancel</Button>
                         <Button type="submit">Create Invoice</Button>
@@ -346,7 +291,7 @@ export default function FinancePage() {
                 </TableHeader>
                 <TableBody>
                   {invoices.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="py-12 text-center text-slate-400">No invoices yet.</TableCell></TableRow>
+                    <EmptyStateRow colSpan={8}>No invoices yet.</EmptyStateRow>
                   ) : (
                     invoices.map((inv) => (
                       <TableRow key={inv.id}>
@@ -358,7 +303,7 @@ export default function FinancePage() {
                         <TableCell className={parseFloat(inv.totalAmount) - parseFloat(inv.amountPaid) > 0 ? "font-semibold text-red-600" : ""}>
                           {money(parseFloat(inv.totalAmount) - parseFloat(inv.amountPaid))}
                         </TableCell>
-                        <TableCell>{invoiceStatusBadge(inv.status)}</TableCell>
+                        <TableCell><StatusBadge status={inv.status} /></TableCell>
                         <TableCell>{formatDate(inv.issueDate)}</TableCell>
                       </TableRow>
                     ))
@@ -388,8 +333,7 @@ export default function FinancePage() {
                       <DialogDescription>Issue a receipt against an outstanding invoice.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleRecordPayment} className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Invoice *</label>
+                      <FormField label="Invoice" required>
                         <Select name="invoiceId" required>
                           <option value="">Select invoice...</option>
                           {unpaidInvoices.map((i) => (
@@ -398,21 +342,18 @@ export default function FinancePage() {
                             </option>
                           ))}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Amount (BWP) *</label>
+                      </FormField>
+                      <FormField label="Amount (BWP)" required>
                         <Input name="amount" type="number" step="0.01" required />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Method *</label>
+                      </FormField>
+                      <FormField label="Method" required>
                         <Select name="method" required>
                           {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m.replace(/_/g, " ")}</option>)}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Reference</label>
+                      </FormField>
+                      <FormField label="Reference">
                         <Input name="reference" placeholder="Transaction / auth reference" />
-                      </div>
+                      </FormField>
                       <div className="flex justify-end gap-3 pt-2">
                         <Button type="button" variant="outline" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
                         <Button type="submit">Record Payment</Button>
@@ -438,7 +379,7 @@ export default function FinancePage() {
                 </TableHeader>
                 <TableBody>
                   {paymentsList.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="py-12 text-center text-slate-400">No payments recorded.</TableCell></TableRow>
+                    <EmptyStateRow colSpan={8}>No payments recorded.</EmptyStateRow>
                   ) : (
                     paymentsList.map((p) => (
                       <TableRow key={p.id}>
@@ -478,23 +419,20 @@ export default function FinancePage() {
                       <DialogDescription>File a claim with the patient&apos;s medical aid.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleSubmitClaim} className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Invoice *</label>
+                      <FormField label="Invoice" required>
                         <Select name="invoiceId" required>
                           <option value="">Select invoice...</option>
                           {invoices.filter((i) => i.billingType === "medical_aid").map((i) => (
                             <option key={i.id} value={i.id}>{i.invoiceNumber} — {i.patientFirstName} {i.patientLastName}</option>
                           ))}
                         </Select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Medical Aid *</label>
+                      </FormField>
+                      <FormField label="Medical Aid" required>
                         <Input name="medicalAid" required placeholder="e.g. Discovery Health" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Membership Number</label>
+                      </FormField>
+                      <FormField label="Membership Number">
                         <Input name="membershipNumber" />
-                      </div>
+                      </FormField>
                       <div className="flex justify-end gap-3 pt-2">
                         <Button type="button" variant="outline" onClick={() => setClaimDialogOpen(false)}>Cancel</Button>
                         <Button type="submit">Submit Claim</Button>
@@ -519,7 +457,7 @@ export default function FinancePage() {
                 </TableHeader>
                 <TableBody>
                   {claims.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="py-12 text-center text-slate-400">No claims submitted.</TableCell></TableRow>
+                    <EmptyStateRow colSpan={7}>No claims submitted.</EmptyStateRow>
                   ) : (
                     claims.map((c) => (
                       <TableRow key={c.id}>
@@ -529,7 +467,7 @@ export default function FinancePage() {
                         <TableCell>{money(c.amountClaimed)}</TableCell>
                         <TableCell>{c.amountApproved ? money(c.amountApproved) : "—"}</TableCell>
                         <TableCell>
-                          {claimStatusBadge(c.status)}
+                          <StatusBadge status={c.status} />
                           {c.rejectionReason && <p className="mt-1 text-xs text-red-500">{c.rejectionReason}</p>}
                         </TableCell>
                         <TableCell>{formatDate(c.submittedAt)}</TableCell>
@@ -564,7 +502,7 @@ export default function FinancePage() {
                 </TableHeader>
                 <TableBody>
                   {tariffList.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="py-12 text-center text-slate-400">No tariffs configured.</TableCell></TableRow>
+                    <EmptyStateRow colSpan={7}>No tariffs configured.</EmptyStateRow>
                   ) : (
                     tariffList.map((t) => (
                       <TableRow key={t.id}>

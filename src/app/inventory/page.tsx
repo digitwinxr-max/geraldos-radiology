@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatCard } from "@/components/ui/stat-card";
+import { FormField } from "@/components/ui/form-field";
+import { EmptyStateRow } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -106,45 +109,36 @@ export default function InventoryPage() {
               <DialogDescription>Register a new consumable or supply item.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreate} className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Name *</label>
+              <FormField label="Name" required className="col-span-2">
                 <Input name="name" required />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
+              </FormField>
+              <FormField label="Category" required>
                 <Select name="category" required>
                   <option value="">Select...</option>
                   {INVENTORY_CATEGORIES.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
                 </Select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">SKU</label>
+              </FormField>
+              <FormField label="SKU">
                 <Input name="sku" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Current Stock</label>
+              </FormField>
+              <FormField label="Current Stock">
                 <Input name="currentStock" type="number" defaultValue="0" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Min Stock</label>
+              </FormField>
+              <FormField label="Min Stock">
                 <Input name="minimumStock" type="number" defaultValue="10" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Unit</label>
+              </FormField>
+              <FormField label="Unit">
                 <Input name="unit" defaultValue="units" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Unit Cost (BWP)</label>
+              </FormField>
+              <FormField label="Unit Cost (BWP)">
                 <Input name="unitCost" type="number" step="0.01" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Supplier</label>
+              </FormField>
+              <FormField label="Supplier">
                 <Input name="supplier" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Location</label>
+              </FormField>
+              <FormField label="Location">
                 <Input name="location" />
-              </div>
+              </FormField>
               <div className="col-span-2 flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
                 <Button type="submit">Add Item</Button>
@@ -156,50 +150,10 @@ export default function InventoryPage() {
     >
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-soft">
-              <Package className="h-6 w-6 text-brand" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{items.length}</p>
-              <p className="text-sm text-slate-500">Total Items</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-50">
-              <AlertTriangle className="h-6 w-6 text-red-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{lowStock.length}</p>
-              <p className="text-sm text-slate-500">Low Stock Alerts</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-operational-soft">
-              <TrendingDown className="h-6 w-6 text-operational" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">P{totalValue.toLocaleString()}</p>
-              <p className="text-sm text-slate-500">Total Value</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-premium-soft">
-              <Package className="h-6 w-6 text-premium" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{INVENTORY_CATEGORIES.length}</p>
-              <p className="text-sm text-slate-500">Categories</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={Package} value={items.length} label="Total Items" tone="text-brand bg-brand-soft" />
+        <StatCard icon={AlertTriangle} value={lowStock.length} label="Low Stock Alerts" tone="text-red-600 bg-red-50" />
+        <StatCard icon={TrendingDown} value={`P${totalValue.toLocaleString()}`} label="Total Value" tone="text-operational bg-operational-soft" />
+        <StatCard icon={Package} value={INVENTORY_CATEGORIES.length} label="Categories" tone="text-premium bg-premium-soft" />
       </div>
 
       {/* Low Stock Alerts */}
@@ -256,11 +210,7 @@ export default function InventoryPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={9} className="py-12 text-center text-slate-400">
-                        No items in this category.
-                      </TableCell>
-                    </TableRow>
+                    <EmptyStateRow colSpan={9}>No items in this category.</EmptyStateRow>
                   ) : (
                     filtered.map((item) => (
                       <TableRow key={item.id}>

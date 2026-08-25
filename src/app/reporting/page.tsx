@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   FileText,
   Mic,
@@ -337,7 +339,7 @@ export default function ReportingPage() {
                     </div>
                   );
                 })}
-                {filteredStudies.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No studies found</p>}
+                {filteredStudies.length === 0 && <EmptyState>No studies found</EmptyState>}
               </div>
             </CardContent>
           </Card>
@@ -360,15 +362,13 @@ export default function ReportingPage() {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{r.patientFirstName} {r.patientLastName}</p>
-                    <Badge variant={r.status === "signed" ? "success" : r.status === "pending_review" ? "warning" : "secondary"} className="text-[9px]">
-                      {r.status.replace("_", " ")}
-                    </Badge>
+                    <StatusBadge status={r.status} className="text-[9px]" />
                   </div>
                   <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{r.templateName ?? "Untitled report"}</p>
                   <p className="text-[10px] text-slate-400">{new Date(r.updatedAt ?? r.createdAt).toLocaleDateString()}</p>
                 </button>
               ))}
-              {reports.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No reports yet</p>}
+              {reports.length === 0 && <EmptyState>No reports yet</EmptyState>}
             </CardContent>
           </Card>
         </div>
@@ -437,7 +437,7 @@ export default function ReportingPage() {
                     <CardDescription>Every save snapshots the previous version — fully auditable</CardDescription>
                   </CardHeader>
                   <CardContent className="max-h-72 space-y-2 overflow-y-auto">
-                    {versions.length === 0 && <p className="py-4 text-center text-sm text-slate-400">No versions recorded yet — save a draft to snapshot v1.</p>}
+                    {versions.length === 0 && <EmptyState padding="py-4">No versions recorded yet — save a draft to snapshot v1.</EmptyState>}
                     {versions.slice().reverse().map((v) => (
                       <div key={v.id} className="rounded-lg border border-slate-100 p-3 dark:border-slate-800">
                         <div className="flex items-center justify-between">

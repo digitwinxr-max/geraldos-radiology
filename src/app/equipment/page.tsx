@@ -9,6 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatCard } from "@/components/ui/stat-card";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { FormField } from "@/components/ui/form-field";
+import { EmptyStateRow } from "@/components/ui/empty-state";
+import { UtilizationBar } from "@/components/ui/utilization-bar";
 import {
   Dialog,
   DialogContent,
@@ -74,15 +79,6 @@ export default function EquipmentPage() {
     return <XCircle className="h-4 w-4 text-red-500" />;
   };
 
-  const statusBadge = (s: string) => {
-    const map: Record<string, "success" | "warning" | "destructive"> = {
-      operational: "success",
-      maintenance: "warning",
-      offline: "destructive",
-    };
-    return <Badge variant={map[s] || "secondary"}>{s}</Badge>;
-  };
-
   const operational = items.filter((i) => i.status === "operational");
   const maintenance = items.filter((i) => i.status === "maintenance");
   const offline = items.filter((i) => i.status === "offline");
@@ -102,33 +98,27 @@ export default function EquipmentPage() {
               <DialogDescription>Register a new imaging machine or equipment unit.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreate} className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Name *</label>
+              <FormField label="Name" required className="col-span-2">
                 <Input name="name" required placeholder="e.g. CT Scanner 3" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Modality *</label>
+              </FormField>
+              <FormField label="Modality" required>
                 <Select name="modality" required>
                   <option value="">Select...</option>
                   {MODALITIES.map((m) => <option key={m} value={m}>{m}</option>)}
                 </Select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Location</label>
+              </FormField>
+              <FormField label="Location">
                 <Input name="location" placeholder="e.g. Room 103" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Manufacturer</label>
+              </FormField>
+              <FormField label="Manufacturer">
                 <Input name="manufacturer" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Model</label>
+              </FormField>
+              <FormField label="Model">
                 <Input name="model" />
-              </div>
-              <div className="col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Serial Number</label>
+              </FormField>
+              <FormField label="Serial Number" className="col-span-2">
                 <Input name="serialNumber" />
-              </div>
+              </FormField>
               <div className="col-span-2 flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
                 <Button type="submit">Add Equipment</Button>
@@ -140,50 +130,10 @@ export default function EquipmentPage() {
     >
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-soft">
-              <Wrench className="h-6 w-6 text-brand" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{items.length}</p>
-              <p className="text-sm text-slate-500">Total Units</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-operational-soft">
-              <CheckCircle className="h-6 w-6 text-operational" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{operational.length}</p>
-              <p className="text-sm text-slate-500">Operational</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-premium-soft">
-              <AlertTriangle className="h-6 w-6 text-premium" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{maintenance.length}</p>
-              <p className="text-sm text-slate-500">In Maintenance</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-50">
-              <XCircle className="h-6 w-6 text-red-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{offline.length}</p>
-              <p className="text-sm text-slate-500">Offline</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={Wrench} value={items.length} label="Total Units" tone="text-brand bg-brand-soft" />
+        <StatCard icon={CheckCircle} value={operational.length} label="Operational" tone="text-operational bg-operational-soft" />
+        <StatCard icon={AlertTriangle} value={maintenance.length} label="In Maintenance" tone="text-premium bg-premium-soft" />
+        <StatCard icon={XCircle} value={offline.length} label="Offline" tone="text-red-600 bg-red-50" />
       </div>
 
       {/* Equipment Table */}
@@ -210,15 +160,11 @@ export default function EquipmentPage() {
             </TableHeader>
             <TableBody>
               {items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="py-12 text-center text-slate-400">
-                    No equipment registered.
-                  </TableCell>
-                </TableRow>
+                <EmptyStateRow colSpan={10}>No equipment registered.</EmptyStateRow>
               ) : (
                 items.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell>{statusBadge(item.status)}</TableCell>
+                    <TableCell><StatusBadge status={item.status} /></TableCell>
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell><Badge variant="outline">{item.modality}</Badge></TableCell>
                     <TableCell>{item.manufacturer || "—"}</TableCell>
@@ -236,18 +182,11 @@ export default function EquipmentPage() {
                     <TableCell>
                       {item.utilizationRate ? (
                         <div className="flex items-center gap-2">
-                          <div className="h-2 w-16 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className={`h-full rounded-full ${
-                                parseFloat(item.utilizationRate) > 80
-                                  ? "bg-operational"
-                                  : parseFloat(item.utilizationRate) > 50
-                                  ? "bg-brand"
-                                  : "bg-premium"
-                              }`}
-                              style={{ width: `${Math.min(100, parseFloat(item.utilizationRate))}%` }}
-                            />
-                          </div>
+                          <UtilizationBar
+                            value={parseFloat(item.utilizationRate)}
+                            className="w-16"
+                            colorFor={(v) => (v > 80 ? "bg-operational" : v > 50 ? "bg-brand" : "bg-premium")}
+                          />
                           <span className="text-sm text-slate-600">{parseFloat(item.utilizationRate).toFixed(0)}%</span>
                         </div>
                       ) : "—"}

@@ -6,6 +6,9 @@ import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { UtilizationBar } from "@/components/ui/utilization-bar";
 import {
   Users,
   Calendar,
@@ -197,15 +200,7 @@ export default function CommandCentrePage() {
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-8">
         {kpis.map((kpi) => (
-          <Card key={kpi.label} className="overflow-hidden">
-            <CardContent className="p-4">
-              <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", kpi.tone.split(" ").slice(1).join(" "))}>
-                <kpi.icon className={cn("h-4 w-4", kpi.tone.split(" ")[0])} />
-              </div>
-              <p className="mt-3 truncate text-xl font-bold text-slate-900 dark:text-slate-100">{kpi.value}</p>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">{kpi.label}</p>
-            </CardContent>
-          </Card>
+          <StatCard key={kpi.label} size="kpi" icon={kpi.icon} value={kpi.value} label={kpi.label} tone={kpi.tone} />
         ))}
       </div>
 
@@ -258,7 +253,7 @@ export default function CommandCentrePage() {
               </div>
             ))}
             {snap && snap.operationalRisks.length === 0 && (
-              <p className="py-6 text-center text-sm text-slate-400">No risks detected</p>
+              <EmptyState>No risks detected</EmptyState>
             )}
           </CardContent>
         </Card>
@@ -296,7 +291,7 @@ export default function CommandCentrePage() {
                 </div>
               </div>
             ))}
-            {snap && snap.queue.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No imaging queues</p>}
+            {snap && snap.queue.length === 0 && <EmptyState>No imaging queues</EmptyState>}
           </CardContent>
         </Card>
 
@@ -315,15 +310,15 @@ export default function CommandCentrePage() {
                   <span className="font-medium text-slate-700 dark:text-slate-300">{m.equipmentName}</span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">{m.utilisation.toFixed(1)}% · {m.status}</span>
                 </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                  <div
-                    className={cn("h-full rounded-full transition-all duration-700", m.utilisation > 80 ? "bg-red-500" : m.utilisation > 60 ? "bg-amber-500" : "bg-emerald-500")}
-                    style={{ width: `${Math.min(100, m.utilisation)}%` }}
-                  />
-                </div>
+                <UtilizationBar
+                  value={m.utilisation}
+                  animated
+                  className="mt-1 dark:bg-slate-800"
+                  colorFor={(v) => (v > 80 ? "bg-red-500" : v > 60 ? "bg-amber-500" : "bg-emerald-500")}
+                />
               </div>
             ))}
-            {snap && snap.machineUtilisation.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No equipment registered</p>}
+            {snap && snap.machineUtilisation.length === 0 && <EmptyState>No equipment registered</EmptyState>}
           </CardContent>
         </Card>
       </div>
@@ -347,7 +342,7 @@ export default function CommandCentrePage() {
                 </div>
               </div>
             ))}
-            {snap && snap.radiologistWorkload.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No radiologists registered</p>}
+            {snap && snap.radiologistWorkload.length === 0 && <EmptyState>No radiologists registered</EmptyState>}
           </CardContent>
         </Card>
 
@@ -365,7 +360,7 @@ export default function CommandCentrePage() {
                 <Badge variant="outline">{r.count}</Badge>
               </div>
             ))}
-            {snap && snap.referralSources.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No referrals yet</p>}
+            {snap && snap.referralSources.length === 0 && <EmptyState>No referrals yet</EmptyState>}
           </CardContent>
         </Card>
 
@@ -399,7 +394,7 @@ export default function CommandCentrePage() {
               </div>
             ))}
             {snap && snap.inventoryAlerts.length === 0 && snap.maintenanceAlerts.length === 0 && snap.appointmentDelays.length === 0 && (
-              <p className="py-6 text-center text-sm text-slate-400">No active alerts</p>
+              <EmptyState>No active alerts</EmptyState>
             )}
           </CardContent>
         </Card>
@@ -438,7 +433,7 @@ export default function CommandCentrePage() {
               </div>
             ))}
             {snap && snap.liveAIRecommendations.length === 0 && (
-              <p className="py-6 text-center text-sm text-slate-400">No AI recommendations awaiting attention</p>
+              <EmptyState>No AI recommendations awaiting attention</EmptyState>
             )}
           </CardContent>
         </Card>
@@ -467,7 +462,7 @@ export default function CommandCentrePage() {
               </div>
             ))}
             {events.length === 0 && (
-              <p className="py-8 text-center text-sm text-slate-400">No events yet — activity will appear as modules generate them</p>
+              <EmptyState padding="py-8">No events yet — activity will appear as modules generate them</EmptyState>
             )}
           </CardContent>
         </Card>

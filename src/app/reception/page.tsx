@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyStateRow } from "@/components/ui/empty-state";
+import { FormField } from "@/components/ui/form-field";
+import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
 import {
   Dialog,
   DialogContent,
@@ -105,11 +109,6 @@ export default function ReceptionPage() {
   });
 
   const waitingQueue = todayAppointments.filter((a) => a.checkedIn && a.status !== "completed" && a.status !== "in_progress");
-  const priorityBadge = (p: string) => {
-    if (p === "stat") return <Badge variant="destructive">STAT</Badge>;
-    if (p === "urgent") return <Badge variant="warning">Urgent</Badge>;
-    return <Badge variant="secondary">Routine</Badge>;
-  };
 
   return (
     <Shell
@@ -129,43 +128,35 @@ export default function ReceptionPage() {
               <DialogDescription>Enter patient demographic and insurance details.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleRegister} className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">First Name *</label>
+              <FormField label="First Name" required>
                 <Input name="firstName" required />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Last Name *</label>
+              </FormField>
+              <FormField label="Last Name" required>
                 <Input name="lastName" required />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Date of Birth *</label>
+              </FormField>
+              <FormField label="Date of Birth" required>
                 <Input name="dateOfBirth" type="date" required />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Gender *</label>
+              </FormField>
+              <FormField label="Gender" required>
                 <Select name="gender" required>
                   <option value="">Select...</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
                 </Select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
+              </FormField>
+              <FormField label="Phone">
                 <Input name="phone" type="tel" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+              </FormField>
+              <FormField label="Email">
                 <Input name="email" type="email" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Insurance Provider</label>
+              </FormField>
+              <FormField label="Insurance Provider">
                 <Input name="insuranceProvider" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Policy Number</label>
+              </FormField>
+              <FormField label="Policy Number">
                 <Input name="insurancePolicyNumber" />
-              </div>
+              </FormField>
               <div className="col-span-2 flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
                 <Button type="submit">Register Patient</Button>
@@ -177,39 +168,9 @@ export default function ReceptionPage() {
     >
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-soft">
-              <Users className="h-6 w-6 text-brand" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{patients.length}</p>
-              <p className="text-sm text-slate-500">Total Patients</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50">
-              <CheckCircle className="h-6 w-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{todayAppointments.length}</p>
-              <p className="text-sm text-slate-500">Today&apos;s Appointments</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-50">
-              <Clock className="h-6 w-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{waitingQueue.length}</p>
-              <p className="text-sm text-slate-500">In Waiting Queue</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={Users} value={patients.length} label="Total Patients" tone="text-brand bg-brand-soft" />
+        <StatCard icon={CheckCircle} value={todayAppointments.length} label="Today's Appointments" tone="text-emerald-600 bg-emerald-50" />
+        <StatCard icon={Clock} value={waitingQueue.length} label="In Waiting Queue" tone="text-amber-600 bg-amber-50" />
       </div>
 
       <Tabs defaultValue="patients">
@@ -251,11 +212,9 @@ export default function ReceptionPage() {
                 </TableHeader>
                 <TableBody>
                   {patients.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="py-12 text-center text-slate-400">
-                        No patients found. Register a new patient or seed the database.
-                      </TableCell>
-                    </TableRow>
+                    <EmptyStateRow colSpan={8}>
+                      No patients found. Register a new patient or seed the database.
+                    </EmptyStateRow>
                   ) : (
                     patients.map((p) => (
                       <TableRow key={p.id}>
@@ -273,9 +232,7 @@ export default function ReceptionPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={p.status === "active" ? "success" : "secondary"}>
-                            {p.status}
-                          </Badge>
+                          <StatusBadge status={p.status} />
                         </TableCell>
                       </TableRow>
                     ))
@@ -306,11 +263,9 @@ export default function ReceptionPage() {
                 </TableHeader>
                 <TableBody>
                   {todayAppointments.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="py-12 text-center text-slate-400">
-                        No appointments scheduled for today.
-                      </TableCell>
-                    </TableRow>
+                    <EmptyStateRow colSpan={7}>
+                      No appointments scheduled for today.
+                    </EmptyStateRow>
                   ) : (
                     todayAppointments.map((a) => (
                       <TableRow key={a.id}>
@@ -319,7 +274,7 @@ export default function ReceptionPage() {
                         <TableCell className="font-mono text-sm">{a.patientMrn}</TableCell>
                         <TableCell>{a.procedure}</TableCell>
                         <TableCell><Badge variant="outline">{a.modality}</Badge></TableCell>
-                        <TableCell>{priorityBadge(a.priority)}</TableCell>
+                        <TableCell><PriorityBadge priority={a.priority} /></TableCell>
                         <TableCell>
                           <Badge variant={
                             a.status === "completed" ? "success" :

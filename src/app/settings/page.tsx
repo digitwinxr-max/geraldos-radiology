@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -60,12 +61,6 @@ export default function SettingsPage() {
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  const statusBadge = (s: IntegrationHealth["status"]) => {
-    if (s === "connected") return <Badge variant="success">Connected</Badge>;
-    if (s === "unreachable") return <Badge variant="destructive">Unreachable</Badge>;
-    return <Badge variant="secondary">Not Configured</Badge>;
-  };
-
   return (
     <Shell title="Settings" description="Platform configuration and integrations">
       <Tabs defaultValue="integrations">
@@ -105,7 +100,7 @@ export default function SettingsPage() {
                           <CardDescription>{svc.purpose}</CardDescription>
                         </div>
                       </div>
-                      {statusBadge(svc.status)}
+                      <StatusBadge status={svc.status} />
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">

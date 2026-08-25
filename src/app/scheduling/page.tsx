@@ -4,8 +4,10 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyStateRow } from "@/components/ui/empty-state";
+import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
 import { Calendar, Clock, Monitor, User } from "lucide-react";
 
 interface Appointment {
@@ -53,74 +55,24 @@ export default function SchedulingPage() {
 
   const operationalEquipment = equipmentList.filter((e) => e.status === "operational");
 
-  const priorityBadge = (p: string) => {
-    if (p === "stat") return <Badge variant="destructive">STAT</Badge>;
-    if (p === "urgent") return <Badge variant="warning">Urgent</Badge>;
-    return <Badge variant="secondary">Routine</Badge>;
-  };
-
-  const statusBadge = (s: string) => {
-    const map: Record<string, "success" | "default" | "warning" | "secondary"> = {
-      completed: "success",
-      in_progress: "default",
-      checked_in: "warning",
-      scheduled: "secondary",
-    };
-    return <Badge variant={map[s] || "secondary"}>{s.replace(/_/g, " ")}</Badge>;
-  };
-
   return (
     <Shell title="Scheduling" description="Machine allocation, radiographer allocation, and calendar management">
       {/* Calendar Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-soft">
-              <Calendar className="h-6 w-6 text-brand" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{todayAppts.length}</p>
-              <p className="text-sm text-slate-500">Today&apos;s Slots</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50">
-              <Monitor className="h-6 w-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">{operationalEquipment.length}</p>
-              <p className="text-sm text-slate-500">Available Machines</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-50">
-              <Clock className="h-6 w-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">
-                {todayAppts.filter((a) => a.status === "scheduled").length}
-              </p>
-              <p className="text-sm text-slate-500">Pending</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-ai-soft">
-              <User className="h-6 w-6 text-ai" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-slate-900">
-                {todayAppts.filter((a) => a.priority === "stat" || a.priority === "urgent").length}
-              </p>
-              <p className="text-sm text-slate-500">Priority Cases</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={Calendar} value={todayAppts.length} label="Today's Slots" tone="text-brand bg-brand-soft" />
+        <StatCard icon={Monitor} value={operationalEquipment.length} label="Available Machines" tone="text-emerald-600 bg-emerald-50" />
+        <StatCard
+          icon={Clock}
+          value={todayAppts.filter((a) => a.status === "scheduled").length}
+          label="Pending"
+          tone="text-amber-600 bg-amber-50"
+        />
+        <StatCard
+          icon={User}
+          value={todayAppts.filter((a) => a.priority === "stat" || a.priority === "urgent").length}
+          label="Priority Cases"
+          tone="text-ai bg-ai-soft"
+        />
       </div>
 
       {/* Schedule Grid */}
@@ -207,11 +159,9 @@ export default function SchedulingPage() {
             </TableHeader>
             <TableBody>
               {appointments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-slate-400">
-                    No appointments found.
-                  </TableCell>
-                </TableRow>
+                <EmptyStateRow colSpan={8}>
+                  No appointments found.
+                </EmptyStateRow>
               ) : (
                 appointments.map((a) => (
                   <TableRow key={a.id}>
@@ -221,8 +171,8 @@ export default function SchedulingPage() {
                     <TableCell>{a.procedure}</TableCell>
                     <TableCell>{a.equipmentName || "—"}</TableCell>
                     <TableCell>{a.radiographerFirstName ? `${a.radiographerFirstName} ${a.radiographerLastName}` : "—"}</TableCell>
-                    <TableCell>{priorityBadge(a.priority)}</TableCell>
-                    <TableCell>{statusBadge(a.status)}</TableCell>
+                    <TableCell><PriorityBadge priority={a.priority} /></TableCell>
+                    <TableCell><StatusBadge status={a.status} /></TableCell>
                   </TableRow>
                 ))
               )}

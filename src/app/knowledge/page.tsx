@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -288,7 +289,7 @@ export default function KnowledgePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {documents.length === 0 && <p className="py-10 text-center text-sm text-slate-400">No documents found in this category</p>}
+                {documents.length === 0 && <EmptyState padding="py-10">No documents found in this category</EmptyState>}
                 {documents.map((d) => {
                   const Icon = CATEGORY_ICONS[d.category] ?? FileText;
                   return (
