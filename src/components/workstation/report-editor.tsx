@@ -20,6 +20,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkstation, type ReportRow } from "./workstation-context";
 import { cn } from "@/lib/utils";
+import { useReports, useReportVersions } from "@/hooks/use-reports";
 import {
   FileText,
   Check,
@@ -82,23 +83,27 @@ export function ReportEditor() {
   const [dictationTarget, setDictationTarget] = useState<"findings" | "impression" | "recommendation">("findings");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Version history state
-  const [versions, setVersions] = useState<ReportVersion[]>([]);
   const [showVersions, setShowVersions] = useState(false);
-  const [loadingVersions, setLoadingVersions] = useState(false);
 
-  // Audit log state
+  // Audit log state (endpoint stays as-is — known dead route, out of scope)
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [showAudit, setShowAudit] = useState(false);
   const [loadingAudit, setLoadingAudit] = useState(false);
 
   // Previous reports state
-  const [previousReports, setPreviousReports] = useState<ReportRow[]>([]);
-  const [showPrevious, setShowPrevious] = useState(false);
   const [comparisonReport, setComparisonReport] = useState<ReportRow | null>(null);
 
   // Active sub-tab within the editor
   const [activeTab, setActiveTab] = useState<"editor" | "versions" | "audit" | "previous">("editor");
+
+  // Tab-enabled keyed queries — fetch only while the matching tab is open.
+  const versionsQuery = useReportVersions<ReportVersion>(report?.id, activeTab === "versions");
+  const previousQuery = useReports<ReportRow>(selected?.patientId ?? undefined, 200, activeTab === "previous" && Boolean(selected?.patientId));
+  const versions = versionsQuery.data ?? [];
+  const loadingVersions = versionsQuery.isFetching;
+  const previousReports = (previousQuery.data ?? []).filter(
+    (r) => r.id !== report?.id && (r.status === "signed" || r.status === "released")
+  );
 
   // Hydrate local fields when a report is loaded
   useEffect(() => {
@@ -121,21 +126,6 @@ export function ReportEditor() {
     }
   }, [selected?.modality, templates, templateName]);
 
-  // Load version history
-  const loadVersions = useCallback(async () => {
-    if (!report?.id) return;
-    setLoadingVersions(true);
-    try {
-      const res = await fetch(`/api/reports/${report.id}/versions`);
-      const data = await res.json();
-      if (res.ok) setVersions(data.data ?? []);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoadingVersions(false);
-    }
-  }, [report]);
-
   // Load audit log
   const loadAudit = useCallback(async () => {
     if (!report?.id) return;
@@ -151,26 +141,10 @@ export function ReportEditor() {
     }
   }, [report]);
 
-  // Load previous reports for comparison
-  const loadPreviousReports = useCallback(async () => {
-    if (!selected?.patientId) return;
-    try {
-      const res = await fetch(`/api/reports?patientId=${selected.patientId}`);
-      const data = await res.json();
-      if (Array.isArray(data.data)) {
-        setPreviousReports(data.data.filter((r: ReportRow) => r.id !== report?.id && (r.status === "signed" || r.status === "released")));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [selected, report]);
-
-  // Load data when tabs change
+  // Audit tab keeps its manual fetch (dead route, handled in Phase 9).
   useEffect(() => {
-    if (activeTab === "versions") loadVersions();
     if (activeTab === "audit") loadAudit();
-    if (activeTab === "previous") loadPreviousReports();
-  }, [activeTab, loadVersions, loadAudit, loadPreviousReports]);
+  }, [activeTab, loadAudit]);
 
   // Listen for AI findings insertion from the AI Review overlay
   useEffect(() => {
@@ -476,7 +450,7 @@ export function ReportEditor() {
           <div className="space-y-3 p-3">
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Version History</p>
-              <button onClick={loadVersions} disabled={loadingVersions} className="text-[10px] text-brand-text hover:underline">
+              <button onClick={() => versionsQuery.refetch()} disabled={loadingVersions} className="text-[10px] text-brand-text hover:underline">
                 {loadingVersions ? "Loading…" : "Refresh"}
               </button>
             </div>
@@ -568,7 +542,7 @@ export function ReportEditor() {
           <div className="space-y-3 p-3">
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Previous Reports</p>
-              <button onClick={loadPreviousReports} className="text-[10px] text-brand-text hover:underline">
+              <button onClick={() => previousQuery.refetch()} className="text-[10px] text-brand-text hover:underline">
                 Refresh
               </button>
             </div>

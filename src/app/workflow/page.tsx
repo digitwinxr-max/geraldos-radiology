@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { PriorityBadge } from "@/components/ui/status-badge";
 import {
   ArrowRight,
@@ -21,6 +22,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/utils";
+import { useWorkflowStudies, useWorklistFacets, useTransitionStudy } from "@/hooks/use-workflow";
+import { ApiClientError } from "@/lib/api-client";
 
 // Mirror of the server-side pipeline (src/lib/workflow.ts). Order is authority.
 const STAGES = [
@@ -66,65 +69,29 @@ interface Radiologist {
 }
 
 export default function WorkflowPage() {
-  const [studies, setStudies] = useState<Study[]>([]);
-  const [radiologists, setRadiologists] = useState<Radiologist[]>([]);
-  const [loading, setLoading] = useState(true);
+  const studiesQuery = useWorkflowStudies<Study>();
+  const facetsQuery = useWorklistFacets<{ radiologists?: Radiologist[] }>();
+  const transition = useTransitionStudy();
+  const studies = useMemo(() => studiesQuery.data ?? [], [studiesQuery.data]);
+  const radiologists = facetsQuery.data?.radiologists ?? [];
+  const loading = studiesQuery.isFetching;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStudies = useCallback(async () => {
-    setLoading(true);
+  const run = async (studyId: string, body: Record<string, unknown>) => {
+    setBusy(studyId);
+    setError(null);
     try {
-      const res = await fetch("/api/workflow?pageSize=200");
-      const d = await res.json();
-      if (Array.isArray(d.data)) setStudies(d.data);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchRadiologists = useCallback(async () => {
-    try {
-      const res = await fetch("/api/worklist/facets");
-      const d = await res.json();
-      if (d?.radiologists) setRadiologists(d.radiologists);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStudies();
-    fetchRadiologists();
-  }, [fetchStudies, fetchRadiologists]);
-
-  const run = useCallback(
-    async (studyId: string, body: Record<string, unknown>, successMessage: string) => {
-      setBusy(studyId);
-      setError(null);
-      try {
-        const res = await fetch(`/api/workflow/${studyId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...body, changedBy: "workflow-board" }),
-        });
-        const d = await res.json();
-        if (!res.ok || d.ok === false) {
-          setError(d.error ?? "Transition rejected by the workflow state machine");
-          return;
-        }
-        setError(null);
-        fetchStudies();
-      } catch {
-        setError("Network error — transition not applied");
-      } finally {
-        setBusy(null);
+      const d = await transition.mutateAsync({ id: studyId, body: { ...body, changedBy: "workflow-board" } });
+      if ((d as { ok?: boolean } | null)?.ok === false) {
+        setError("Transition rejected by the workflow state machine");
       }
-    },
-    [fetchStudies]
-  );
+    } catch (e) {
+      setError(e instanceof ApiClientError ? e.message : "Network error — transition not applied");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const advance = (s: Study) => {
     const next = STAGES[STAGES.findIndex((x) => x.key === s.stage) + 1]?.key;
@@ -136,19 +103,19 @@ export default function WorkflowPage() {
         setError("No radiologist available to assign");
         return;
       }
-      run(s.id, { action: "assign", radiologistId: radiologists[0].id }, "Assigned");
+      run(s.id, { action: "assign", radiologistId: radiologists[0].id });
       return;
     }
-    run(s.id, { action: "transition", to: next }, `Advanced to ${next}`);
+    run(s.id, { action: "transition", to: next });
   };
 
   const assign = (s: Study) => {
     const radio = radiologists[0];
     if (!radio) return;
-    run(s.id, { action: "assign", radiologistId: radio.id }, "Assigned");
+    run(s.id, { action: "assign", radiologistId: radio.id });
   };
 
-  const archive = (s: Study) => run(s.id, { action: "transition", to: "archived" }, "Archived");
+  const archive = (s: Study) => run(s.id, { action: "transition", to: "archived" });
 
   const stageIndex = (key: string) => STAGES.findIndex((s) => s.key === key);
 
@@ -165,6 +132,10 @@ export default function WorkflowPage() {
 
   return (
     <Shell title="Radiology Workflow" description="Real state transitions — Referral to Archive">
+      {studiesQuery.isError && !studiesQuery.data && (
+        <ErrorState message="Failed to load workflow studies." onRetry={() => studiesQuery.refetch()} />
+      )}
+
       {/* Pipeline strip */}
       <div className="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-3 flex items-center justify-between">
@@ -178,7 +149,7 @@ export default function WorkflowPage() {
               </span>
             )}
             <button
-              onClick={fetchStudies}
+              onClick={() => studiesQuery.refetch()}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-brand transition-colors hover:bg-brand-soft dark:hover:bg-slate-800"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh

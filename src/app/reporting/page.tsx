@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   FileText,
   Mic,
@@ -27,6 +29,16 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getJson, ApiClientError } from "@/lib/api-client";
+import { useWorkflowStudies } from "@/hooks/use-workflow";
+import {
+  useReports,
+  useReportTemplates,
+  useReportVersions,
+  useCreateReport,
+  useUpdateReport,
+  useReportAssist,
+} from "@/hooks/use-reports";
 
 interface Study {
   id: string;
@@ -97,16 +109,12 @@ interface Version {
 }
 
 export default function ReportingPage() {
-  const [studies, setStudies] = useState<Study[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [activeReport, setActiveReport] = useState<Report | null>(null);
   const [findings, setFindings] = useState("");
   const [impression, setImpression] = useState("");
   const [recommendation, setRecommendation] = useState("");
   const [templateId, setTemplateId] = useState<string>("");
   const [assist, setAssist] = useState<AssistResult | null>(null);
-  const [versions, setVersions] = useState<Version[]>([]);
   const [assisting, setAssisting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -114,20 +122,26 @@ export default function ReportingPage() {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [voiceOn, setVoiceOn] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [signConfirmOpen, setSignConfirmOpen] = useState(false);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
-  const fetchAll = useCallback(() => {
-    fetch("/api/workflow").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setStudies(d.data); }).catch(() => {});
-    fetch("/api/reports").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setReports(d.data); }).catch(() => {});
-    fetch("/api/reports/templates").then((r) => r.json()).then((d) => setTemplates(d.data ?? [])).catch(() => {});
-  }, []);
-
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  const studiesQuery = useWorkflowStudies<Study>();
+  const reportsQuery = useReports<Report>();
+  const templatesQuery = useReportTemplates<Template>();
+  // Keyed by the active report — refetched whenever another report is selected.
+  const versionsQuery = useReportVersions<Version>(activeReport?.id);
+  const studies = studiesQuery.data ?? [];
+  const reports = useMemo(() => reportsQuery.data ?? [], [reportsQuery.data]);
+  const templates = templatesQuery.data ?? [];
+  const versions = versionsQuery.data ?? [];
+  const createReportMutation = useCreateReport();
+  const updateReportMutation = useUpdateReport();
+  const assistMutation = useReportAssist();
 
   const notify = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
   // ── Report selection ──
-  const selectReport = useCallback((report: Report) => {
+  const selectReport = (report: Report) => {
     setActiveReport(report);
     setFindings(report.findings ?? "");
     setImpression(report.impression ?? "");
@@ -135,34 +149,28 @@ export default function ReportingPage() {
     setTemplateId("");
     setAssist(null);
     setShowVersionHistory(false);
-    fetch(`/api/reports/${report.id}/versions`)
-      .then((r) => r.json())
-      .then((d) => setVersions(d.data ?? []))
-      .catch(() => {});
-  }, []);
+  };
 
   /** Load the fully-joined report (patient + radiologist context) for the active editor. */
-  const loadJoinedReport = useCallback(async (id: string) => {
+  const loadJoinedReport = async (id: string) => {
     try {
-      const res = await fetch(`/api/reports/${id}`);
-      const data = await res.json();
-      if (data.ok) selectReport(data.report);
+      const data = await getJson<{ ok?: boolean; report?: Report }>(`/api/reports/${id}`);
+      if (data.ok && data.report) selectReport(data.report);
     } catch { /* ignore */ }
-  }, [selectReport]);
+  };
 
   // ── New report from a study ──
   const createReport = async (study: Study) => {
     setSaving(true);
     try {
-      const res = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId: study.patientId, studyId: study.id, templateName: study.procedure, status: "draft" }),
-      });
-      const created = await res.json();
+      const created = (await createReportMutation.mutateAsync({
+        patientId: study.patientId,
+        studyId: study.id,
+        templateName: study.procedure,
+        status: "draft",
+      })) as { id?: string } | null;
       if (created?.id) {
-        await fetchAll();
-        loadJoinedReport(created.id);
+        await loadJoinedReport(created.id);
         notify("Draft report created — the AI assistant is ready.");
       }
     } catch { notify("Failed to create report"); }
@@ -174,20 +182,15 @@ export default function ReportingPage() {
     if (!activeReport) return;
     setAssisting(true);
     try {
-      const res = await fetch("/api/reports/assist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reportId: activeReport.id,
-          studyId: activeReport.studyId,
-          patientId: activeReport.patientId,
-          templateId: templateId || undefined,
-          findings,
-          impression,
-          recommendation,
-        }),
-      });
-      const data = await res.json();
+      const data = (await assistMutation.mutateAsync({
+        reportId: activeReport.id,
+        studyId: activeReport.studyId,
+        patientId: activeReport.patientId,
+        templateId: templateId || undefined,
+        findings,
+        impression,
+        recommendation,
+      })) as (AssistResult & { ok?: boolean });
       if (data.ok) {
         setAssist(data);
         if (data.template?.id) setTemplateId(data.template.id);
@@ -202,10 +205,9 @@ export default function ReportingPage() {
     if (!activeReport) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/reports/${activeReport.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = (await updateReportMutation.mutateAsync({
+        id: activeReport.id,
+        body: {
           findings,
           impression,
           recommendation,
@@ -215,17 +217,17 @@ export default function ReportingPage() {
           aiAssisted: Boolean(assist),
           qualityScore: assist?.quality.score,
           changedBy: "radiologist",
-        }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        await fetchAll();
-        loadJoinedReport(activeReport.id);
+        },
+      })) as { ok?: boolean } | null;
+      if (data?.ok) {
+        await loadJoinedReport(activeReport.id);
         notify(status === "signed" ? "Report signed by radiologist — logged to audit." : status ? `Report moved to ${status}.` : "Draft saved.");
       } else {
-        notify(data.error ?? "Save failed");
+        notify("Save failed");
       }
-    } catch { notify("Save failed"); }
+    } catch (e) {
+      notify(e instanceof ApiClientError ? e.message : "Save failed");
+    }
     setSaving(false);
   };
 
@@ -283,12 +285,26 @@ export default function ReportingPage() {
 
   return (
     <Shell title="Radiologist Reporting Assistant" description="Decision support only — the radiologist always makes the final diagnosis">
+      {studiesQuery.isError && !studiesQuery.data && (
+        <ErrorState message="Failed to load reporting data." onRetry={() => studiesQuery.refetch()} />
+      )}
+
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 animate-slide-up rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
           {toast}
         </div>
       )}
+
+      {/* Sign-off confirmation (replaces window.confirm) */}
+      <ConfirmationDialog
+        open={signConfirmOpen}
+        onOpenChange={setSignConfirmOpen}
+        title="Sign this report?"
+        description="The radiologist confirms this is the final version."
+        confirmLabel="Sign Report"
+        onConfirm={() => saveReport("signed", "Dr. Radiologist")}
+      />
 
       {/* Stats */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -417,11 +433,7 @@ export default function ReportingPage() {
                       size="sm"
                       className="gap-1 bg-emerald-600 hover:bg-emerald-500"
                       disabled={saving || activeReport.status === "signed"}
-                      onClick={() => {
-                        if (window.confirm("Sign this report? The radiologist confirms this is the final version.")) {
-                          saveReport("signed", "Dr. Radiologist");
-                        }
-                      }}
+                      onClick={() => setSignConfirmOpen(true)}
                     >
                       <ShieldCheck className="h-3.5 w-3.5" /> Sign Report
                     </Button>

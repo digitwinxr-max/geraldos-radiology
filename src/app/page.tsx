@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { UtilizationBar } from "@/components/ui/utilization-bar";
+import { useCommandCentreSnapshot, useCommandCentreEvents, useCommandCentreInvalidator } from "@/hooks/use-command-centre";
+import { mutate } from "@/lib/api-client";
 import {
   Users,
   Calendar,
@@ -115,39 +118,22 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 export default function CommandCentrePage() {
-  const [snap, setSnap] = useState<Snapshot | null>(null);
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const snapQuery = useCommandCentreSnapshot<Snapshot>();
+  const eventsQuery = useCommandCentreEvents<EventItem>();
+  const invalidateCommandCentre = useCommandCentreInvalidator();
   const [seeding, setSeeding] = useState(false);
   const [seeded, setSeeded] = useState(false);
-  const initialized = useRef(false);
 
-  const fetchAll = useCallback(() => {
-    fetch("/api/command-centre")
-      .then((r) => r.json())
-      .then((d) => { if (d.ok) { setSnap(d); setLastUpdated(new Date()); } })
-      .catch(() => {});
-    fetch("/api/events?pageSize=40")
-      .then((r) => r.json())
-      .then((d) => setEvents(d.data ?? []))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      fetchAll();
-    }
-    const timer = setInterval(fetchAll, 10000);
-    return () => clearInterval(timer);
-  }, [fetchAll]);
+  const snap = snapQuery.data?.ok ? snapQuery.data : null;
+  const events = eventsQuery.data ?? [];
+  const lastUpdated = snapQuery.dataUpdatedAt ? new Date(snapQuery.dataUpdatedAt) : null;
 
   const seedDatabase = async () => {
     setSeeding(true);
     try {
-      await fetch("/api/seed", { method: "POST" });
+      await mutate("POST", "/api/seed");
       setSeeded(true);
-      fetchAll();
+      invalidateCommandCentre();
     } catch { /* ignore */ }
     setSeeding(false);
   };
@@ -170,6 +156,10 @@ export default function CommandCentrePage() {
 
   return (
     <Shell title="Operations Command Centre" description="Real-time diagnostic imaging operations — refreshed every 10 seconds">
+      {snapQuery.isError && !snapQuery.data && (
+        <ErrorState message="Failed to load the command centre." onRetry={() => snapQuery.refetch()} />
+      )}
+
       {/* Empty state + live indicator row */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         {isEmpty && !seeded ? (
@@ -190,7 +180,7 @@ export default function CommandCentrePage() {
             </span>
             <span>·</span>
             <span>Updated {lastUpdated ? lastUpdated.toLocaleTimeString() : "…"}</span>
-            <button onClick={fetchAll} className="ml-1 flex items-center gap-1 font-medium text-brand-text hover:text-brand-active">
+            <button onClick={() => invalidateCommandCentre()} className="ml-1 flex items-center gap-1 font-medium text-brand-text hover:text-brand-active">
               <RefreshCw className="h-3 w-3" /> Refresh
             </button>
           </div>

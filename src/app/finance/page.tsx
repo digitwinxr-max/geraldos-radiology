@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyStateRow } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { FormField } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -33,6 +34,15 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { BILLING_TYPES, PAYMENT_METHODS } from "@/lib/finance";
+import {
+  useInvoices,
+  usePayments,
+  useClaims,
+  useTariffs,
+  useFinanceAnalytics,
+  useFinanceMutation,
+} from "@/hooks/use-finance";
+import { usePatients } from "@/hooks/use-patients";
 
 interface Invoice {
   id: string;
@@ -113,26 +123,25 @@ interface FinanceAnalytics {
 const money = (n: number | string) => `P${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function FinancePage() {
-  const [analytics, setAnalytics] = useState<FinanceAnalytics | null>(null);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [paymentsList, setPaymentsList] = useState<Payment[]>([]);
-  const [claims, setClaims] = useState<Claim[]>([]);
-  const [tariffList, setTariffList] = useState<Tariff[]>([]);
-  const [patientsList, setPatientsList] = useState<Patient[]>([]);
+  const analyticsQuery = useFinanceAnalytics<FinanceAnalytics>();
+  const invoicesQuery = useInvoices<Invoice>();
+  const paymentsQuery = usePayments<Payment>();
+  const claimsQuery = useClaims<Claim>();
+  const tariffsQuery = useTariffs<Tariff>();
+  const patientsQuery = usePatients<Patient>();
+  const createInvoice = useFinanceMutation("POST", "/api/invoices");
+  const recordPayment = useFinanceMutation("POST", "/api/payments");
+  const submitClaim = useFinanceMutation("POST", "/api/claims");
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
 
-  const fetchAll = useCallback(() => {
-    fetch("/api/finance/analytics").then((r) => r.json()).then(setAnalytics).catch(() => {});
-    fetch("/api/invoices").then((r) => r.json()).then((d) => setInvoices(d.data ?? [])).catch(() => {});
-    fetch("/api/payments").then((r) => r.json()).then((d) => setPaymentsList(d.data ?? [])).catch(() => {});
-    fetch("/api/claims").then((r) => r.json()).then((d) => setClaims(d.data ?? [])).catch(() => {});
-    fetch("/api/tariffs").then((r) => r.json()).then((d) => setTariffList(d.data ?? [])).catch(() => {});
-    fetch("/api/patients").then((r) => r.json()).then((d) => setPatientsList(d.data ?? [])).catch(() => {});
-  }, []);
-
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  const analytics = analyticsQuery.data ?? null;
+  const invoices = invoicesQuery.data ?? [];
+  const paymentsList = paymentsQuery.data ?? [];
+  const claims = claimsQuery.data ?? [];
+  const tariffList = tariffsQuery.data ?? [];
+  const patientsList = patientsQuery.data ?? [];
 
   const handleCreateInvoice = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -142,19 +151,14 @@ export default function FinancePage() {
     const billingType = form.get("billingType") as string;
     if (!tariff) return;
     const unitPrice = billingType === "medical_aid" ? parseFloat(tariff.medicalAidPrice) : parseFloat(tariff.cashPrice);
-    await fetch("/api/invoices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        patientId: form.get("patientId"),
-        billingType,
-        insuranceProvider: form.get("insuranceProvider") || null,
-        insurancePolicyNumber: form.get("insurancePolicyNumber") || null,
-        lineItems: [{ description: tariff.description, quantity: 1, unitPrice, tariffId: tariff.id }],
-      }),
-    });
+    await createInvoice.mutateAsync({
+      patientId: form.get("patientId"),
+      billingType,
+      insuranceProvider: form.get("insuranceProvider") || null,
+      insurancePolicyNumber: form.get("insurancePolicyNumber") || null,
+      lineItems: [{ description: tariff.description, quantity: 1, unitPrice, tariffId: tariff.id }],
+    }).catch(() => {});
     setInvoiceDialogOpen(false);
-    fetchAll();
   };
 
   const handleRecordPayment = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -163,20 +167,15 @@ export default function FinancePage() {
     const invoiceId = form.get("invoiceId") as string;
     const invoice = invoices.find((i) => i.id === invoiceId);
     if (!invoice) return;
-    await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        invoiceId,
-        patientId: invoice.patientId,
-        amount: form.get("amount"),
-        method: form.get("method"),
-        reference: form.get("reference"),
-        receivedBy: "Gerald Holdings Admin",
-      }),
-    });
+    await recordPayment.mutateAsync({
+      invoiceId,
+      patientId: invoice.patientId,
+      amount: form.get("amount"),
+      method: form.get("method"),
+      reference: form.get("reference"),
+      receivedBy: "Gerald Holdings Admin",
+    }).catch(() => {});
     setPaymentDialogOpen(false);
-    fetchAll();
   };
 
   const handleSubmitClaim = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -185,25 +184,24 @@ export default function FinancePage() {
     const invoiceId = form.get("invoiceId") as string;
     const invoice = invoices.find((i) => i.id === invoiceId);
     if (!invoice) return;
-    await fetch("/api/claims", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        invoiceId,
-        patientId: invoice.patientId,
-        medicalAid: form.get("medicalAid"),
-        membershipNumber: form.get("membershipNumber"),
-        amountClaimed: invoice.totalAmount,
-      }),
-    });
+    await submitClaim.mutateAsync({
+      invoiceId,
+      patientId: invoice.patientId,
+      medicalAid: form.get("medicalAid"),
+      membershipNumber: form.get("membershipNumber"),
+      amountClaimed: invoice.totalAmount,
+    }).catch(() => {});
     setClaimDialogOpen(false);
-    fetchAll();
   };
 
   const unpaidInvoices = invoices.filter((i) => i.status !== "paid" && i.status !== "written_off");
 
   return (
     <Shell title="Finance" description="Billing, receipting, insurance claims and revenue management">
+      {invoicesQuery.isError && !invoicesQuery.data && (
+        <ErrorState message="Failed to load finance data." onRetry={() => invoicesQuery.refetch()} />
+      )}
+
       {/* KPI Row */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={TrendingUp} value={analytics ? money(analytics.totalInvoiced) : "—"} label="Total Invoiced" tone="text-premium bg-premium-soft" />

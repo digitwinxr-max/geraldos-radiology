@@ -3,6 +3,9 @@
 import React, { useMemo, useState } from "react";
 import { useWorkstation, VIEWS, type WorklistView, type WorklistEntry } from "./workstation-context";
 import { cn } from "@/lib/utils";
+import { mutate } from "@/lib/api-client";
+import { useTransitionStudy } from "@/hooks/use-workflow";
+import { useCreateBookmark } from "@/hooks/use-bookmarks";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./context-menu";
 import {
   Search,
@@ -91,6 +94,9 @@ export function WorklistPanel() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const { menu, onContextMenu, close } = useContextMenu();
+  // Context-menu mutations — onSuccess invalidation replaces refreshWorklist().
+  const transition = useTransitionStudy();
+  const createBookmark = useCreateBookmark();
 
   const counts = useMemo(() => {
     const c: Partial<Record<WorklistView, number>> = {};
@@ -131,15 +137,11 @@ export function WorklistPanel() {
         label: "Bookmark",
         icon: Bookmark,
         action: async () => {
-          await fetch("/api/bookmarks", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              studyId: e.id,
-              label: `${e.procedure} — ${e.patientLastName ?? ""}`.trim(),
-              userId: "radiologist",
-            }),
-          });
+          await createBookmark.mutateAsync({
+            studyId: e.id,
+            label: `${e.procedure} — ${e.patientLastName ?? ""}`.trim(),
+            userId: "radiologist",
+          }).catch(() => {});
         },
       },
       {
@@ -152,12 +154,7 @@ export function WorklistPanel() {
         label: "Flag as urgent",
         icon: Flag,
         action: async () => {
-          await fetch(`/api/workflow/${e.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ priority: "stat" }),
-          });
-          refreshWorklist();
+          await transition.mutateAsync({ id: e.id, body: { priority: "stat" } }).catch(() => {});
         },
         disabled: e.priority === "stat" || e.priority === "emergency",
       },
@@ -167,12 +164,7 @@ export function WorklistPanel() {
         action: async () => {
           const radio = facets?.radiologists?.[0];
           if (!radio) return;
-          await fetch(`/api/workflow/${e.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "assign", radiologistId: radio.id, changedBy: "radiologist" }),
-          });
-          refreshWorklist();
+          await transition.mutateAsync({ id: e.id, body: { action: "assign", radiologistId: radio.id, changedBy: "radiologist" } }).catch(() => {});
         },
         disabled: ["released", "archived"].includes(e.stage) || !facets?.radiologists?.length,
       },
@@ -180,12 +172,7 @@ export function WorklistPanel() {
         label: "Release study",
         icon: CheckCircle2,
         action: async () => {
-          await fetch(`/api/workflow/${e.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "transition", to: "released", changedBy: "radiologist" }),
-          });
-          refreshWorklist();
+          await transition.mutateAsync({ id: e.id, body: { action: "transition", to: "released", changedBy: "radiologist" } }).catch(() => {});
         },
         // Only a study whose report has been signed can be released.
         disabled: e.stage !== "signed",
@@ -203,16 +190,11 @@ export function WorklistPanel() {
       for (const file of Array.from(files)) {
         formData.append("file", file);
       }
-      const res = await fetch("/api/orthanc/upload", { method: "POST", body: formData });
-      if (res.ok) {
-        const data = await res.json();
-        const count = data.count ?? files.length;
-        setUploadResult(`Uploaded ${count} DICOM file(s) successfully`);
-        refreshWorklist();
-      } else {
-        const err = await res.json().catch(() => ({ error: "Upload failed" }));
-        setUploadResult(err.error ?? "Upload failed");
-      }
+      // FormData passthrough; local uploading/uploadResult state preserved.
+      const data = await mutate<{ count?: number }>("POST", "/api/orthanc/upload", formData);
+      const count = data.count ?? files.length;
+      setUploadResult(`Uploaded ${count} DICOM file(s) successfully`);
+      refreshWorklist();
     } catch (e) {
       setUploadResult(e instanceof Error ? e.message : "Upload failed");
     } finally {

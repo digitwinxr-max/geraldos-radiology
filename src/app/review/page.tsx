@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   ScanSearch,
   Check,
@@ -18,6 +20,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { REVIEW_MODALITIES, TECHNICAL_CHECKS } from "@/lib/ai-review";
+import { useAiReviewObservations, useReviewObservation } from "@/hooks/use-ai-review";
+import { qk } from "@/lib/query-keys";
 
 interface Observation {
   id: string;
@@ -45,34 +49,25 @@ const CATEGORY_STYLE: Record<string, { badge: "destructive" | "warning" | "outli
 };
 
 export default function AiReviewPage() {
-  const [observations, setObservations] = useState<Observation[]>([]);
+  const qc = useQueryClient();
   const [filter, setFilter] = useState<"all" | "pending" | "accepted" | "rejected">("pending");
   const [modality, setModality] = useState<string>("all");
-  const [loading, setLoading] = useState(false);
   const [reviewer, setReviewer] = useState("Dr. Radiologist");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (filter !== "all") params.set("status", filter);
-    const res = await fetch(`/api/ai-review?${params.toString()}`);
-    const data = await res.json();
-    if (res.ok) setObservations(data.data ?? []);
-    setLoading(false);
-  }, [filter]);
+  // Keyed by the status filter — switching tabs fetches the matching view.
+  const observationsQuery = useAiReviewObservations<Observation>(filter === "all" ? {} : { status: filter });
+  const reviewMutation = useReviewObservation();
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
-
+  const observations = observationsQuery.data ?? [];
   const filtered = modality === "all" ? observations : observations.filter((o) => o.modality === modality);
 
   const review = async (id: string, status: "accepted" | "rejected") => {
-    await fetch(`/api/ai-review/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, reviewedBy: reviewer }),
-    });
-    setObservations((obs) => obs.map((o) => (o.id === id ? { ...o, status, reviewedBy: reviewer, reviewedAt: new Date().toISOString() } : o)));
+    await reviewMutation.mutateAsync({ id, body: { status, reviewedBy: reviewer } }).catch(() => {});
+    // Optimistic local update (parity with the previous setState behaviour).
+    qc.setQueryData(qk.aiReview(filter === "all" ? {} : { status: filter }), (obs: Observation[] | undefined) =>
+      (obs ?? []).map((o) => (o.id === id ? { ...o, status, reviewedBy: reviewer, reviewedAt: new Date().toISOString() } : o))
+    );
   };
 
   const pending = observations.filter((o) => o.status === "pending").length;
@@ -81,6 +76,10 @@ export default function AiReviewPage() {
 
   return (
     <Shell title="Multi-Modal AI Review" description="X-Ray · CT · MRI · Ultrasound · Mammography · DEXA · Dental · Nuclear Medicine">
+      {observationsQuery.isError && !observationsQuery.data && (
+        <ErrorState message="Failed to load AI review observations." onRetry={() => observationsQuery.refetch()} />
+      )}
+
       {/* Guardrail banner */}
       <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-900 dark:bg-amber-950/40">
         <ShieldCheck className="h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />

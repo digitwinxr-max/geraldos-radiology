@@ -1,22 +1,22 @@
 "use client";
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { KeyRound, UserRound, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useIntegrationsClientConfig } from "@/hooks/use-integrations";
 
 function LoginInner() {
   const params = useSearchParams();
   const error = params.get("error");
-  const [keycloakEnabled, setKeycloakEnabled] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    fetch("/api/integrations/client-config")
-      .then((r) => r.json())
-      .then((d) => setKeycloakEnabled(Boolean(d.keycloakEnabled)))
-      .catch(() => setKeycloakEnabled(false));
-  }, []);
+  // Tri-state parity: null while loading, false on fetch failure.
+  const configQuery = useIntegrationsClientConfig();
+  const keycloakEnabled: boolean | null = configQuery.isError
+    ? false
+    : configQuery.data
+      ? Boolean(configQuery.data.keycloakEnabled)
+      : null;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">

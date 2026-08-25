@@ -1,8 +1,16 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bell, CheckCheck, AlertTriangle, Info, CheckCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  useNotifications,
+  useMarkNotificationRead,
+  useDismissNotification,
+  type NotificationsEnvelope,
+} from "@/hooks/use-notifications";
+import { qk } from "@/lib/query-keys";
 
 interface Notification {
   id: string;
@@ -23,33 +31,17 @@ const TYPE_ICON: Record<string, { icon: React.ElementType; className: string }> 
 };
 
 export function NotificationCentre() {
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<Notification[]>([]);
-  const [unread, setUnread] = useState(0);
-  const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const fetchItems = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/notifications?pageSize=30");
-      const data = await res.json();
-      if (res.ok) {
-        setItems(data.data ?? []);
-        setUnread(Number(data.unread ?? 0));
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchItems();
-    const timer = setInterval(fetchItems, 25000);
-    return () => clearInterval(timer);
-  }, [fetchItems]);
+  // 25 s polling parity, exposed through refetchInterval.
+  const notificationsQuery = useNotifications<Notification>(30, 25_000);
+  const markRead = useMarkNotificationRead();
+  const dismissMutation = useDismissNotification();
+  const items = notificationsQuery.data?.data ?? [];
+  const unread = notificationsQuery.data?.unread ?? 0;
+  const loading = notificationsQuery.isFetching;
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -59,17 +51,19 @@ export function NotificationCentre() {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
+  const patchEnvelope = (updater: (prev: NotificationsEnvelope<Notification>) => NotificationsEnvelope<Notification>) => {
+    qc.setQueryData<NotificationsEnvelope<Notification> | undefined>(qk.notifications(30), (prev) => (prev ? updater(prev) : prev));
+  };
+
   const markAllRead = async () => {
-    await Promise.all(
-      items.filter((i) => !i.read).map((i) => fetch(`/api/notifications/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ read: true }) }))
-    );
-    setItems((list) => list.map((i) => ({ ...i, read: true })));
-    setUnread(0);
+    await Promise.all(items.filter((i) => !i.read).map((i) => markRead.mutateAsync(i.id).catch(() => {})));
+    // Optimistic update (parity), then the onSettled invalidation reconciles.
+    patchEnvelope((prev) => ({ ...prev, unread: 0, data: prev.data.map((i) => ({ ...i, read: true })) }));
   };
 
   const dismiss = async (id: string) => {
-    await fetch(`/api/notifications/${id}`, { method: "DELETE" });
-    setItems((list) => list.filter((i) => i.id !== id));
+    await dismissMutation.mutateAsync(id).catch(() => {});
+    patchEnvelope((prev) => ({ ...prev, data: prev.data.filter((i) => i.id !== id) }));
   };
 
   return (

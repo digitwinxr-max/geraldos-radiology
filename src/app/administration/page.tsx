@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyStateRow } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { FormField } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -24,6 +25,7 @@ import {
 import { Users, Building2, ShieldCheck, Plus, Briefcase, MapPin } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { EMPLOYMENT_TYPES } from "@/lib/finance";
+import { useEmployees, useBranches, useRoles, useStaff, useAdministrationMutation } from "@/hooks/use-administration";
 
 interface Employee {
   id: string;
@@ -71,59 +73,47 @@ interface StaffMember {
 const money = (n: number | string | null) => (n ? `P${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—");
 
 export default function AdministrationPage() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [branchesList, setBranchesList] = useState<Branch[]>([]);
-  const [rolesList, setRolesList] = useState<Role[]>([]);
-  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const employeesQuery = useEmployees<Employee>();
+  const branchesQuery = useBranches<Branch>();
+  const rolesQuery = useRoles<Role>();
+  const staffQuery = useStaff<StaffMember>();
+  const addEmployee = useAdministrationMutation("/api/employees");
+  const addBranch = useAdministrationMutation("/api/branches");
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
 
-  const fetchAll = useCallback(() => {
-    fetch("/api/employees").then((r) => r.json()).then((d) => setEmployees(d.data ?? [])).catch(() => {});
-    fetch("/api/branches").then((r) => r.json()).then((d) => setBranchesList(d.data ?? [])).catch(() => {});
-    fetch("/api/roles").then((r) => r.json()).then((d) => setRolesList(d.data ?? [])).catch(() => {});
-    fetch("/api/staff").then((r) => r.json()).then((d) => setStaffList(d.data ?? [])).catch(() => {});
-  }, []);
-
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  const employees = employeesQuery.data ?? [];
+  const branchesList = branchesQuery.data ?? [];
+  const rolesList = rolesQuery.data ?? [];
+  const staffList = staffQuery.data ?? [];
 
   const handleAddEmployee = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await fetch("/api/employees", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        staffId: form.get("staffId"),
-        department: form.get("department"),
-        employmentType: form.get("employmentType"),
-        branchId: form.get("branchId") || null,
-        startDate: form.get("startDate"),
-        monthlySalary: form.get("monthlySalary") || null,
-        hourlyRate: form.get("hourlyRate") || null,
-      }),
-    });
+    await addEmployee.mutateAsync({
+      staffId: form.get("staffId"),
+      department: form.get("department"),
+      employmentType: form.get("employmentType"),
+      branchId: form.get("branchId") || null,
+      startDate: form.get("startDate"),
+      monthlySalary: form.get("monthlySalary") || null,
+      hourlyRate: form.get("hourlyRate") || null,
+    }).catch(() => {});
     setEmployeeDialogOpen(false);
-    fetchAll();
   };
 
   const handleAddBranch = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await fetch("/api/branches", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: form.get("name"),
-        code: form.get("code"),
-        address: form.get("address"),
-        phone: form.get("phone"),
-        email: form.get("email"),
-        managerName: form.get("managerName"),
-      }),
-    });
+    await addBranch.mutateAsync({
+      name: form.get("name"),
+      code: form.get("code"),
+      address: form.get("address"),
+      phone: form.get("phone"),
+      email: form.get("email"),
+      managerName: form.get("managerName"),
+    }).catch(() => {});
     setBranchDialogOpen(false);
-    fetchAll();
   };
 
   const employedStaffIds = new Set(employees.map((e) => `${e.staffFirstName ?? ""}${e.staffLastName ?? ""}`));
@@ -131,6 +121,10 @@ export default function AdministrationPage() {
 
   return (
     <Shell title="Administration" description="Staff, branches, roles & permissions, and organisational management">
+      {employeesQuery.isError && !employeesQuery.data && (
+        <ErrorState message="Failed to load administration data." onRetry={() => employeesQuery.refetch()} />
+      )}
+
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
         <StatCard icon={Users} value={employees.length} label="Employees" tone="text-brand bg-brand-soft" />

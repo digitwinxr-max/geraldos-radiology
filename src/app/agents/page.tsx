@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Shell } from "@/components/layout/shell";
+import { useIntegrationsClientConfig } from "@/hooks/use-integrations";
+import { mutate } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -183,19 +185,13 @@ const SOURCE_LABELS: Record<string, { label: string; variant: "success" | "warni
 };
 
 export default function AgentsPage() {
-  const [langgraphEnabled, setLanggraphEnabled] = useState(false);
+  const configQuery = useIntegrationsClientConfig();
+  const langgraphEnabled = Boolean(configQuery.data?.langgraphEnabled);
   const [chatAgent, setChatAgent] = useState<AgentDef | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    fetch("/api/integrations/client-config")
-      .then((r) => r.json())
-      .then((d) => setLanggraphEnabled(Boolean(d.langgraphEnabled)))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -213,12 +209,7 @@ export default function AgentsPage() {
     setMessages((m) => [...m, { role: "user", content: userMessage }]);
     setSending(true);
     try {
-      const res = await fetch("/api/agents/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent: chatAgent.id, message: userMessage }),
-      });
-      const data = await res.json();
+      const data = await mutate<{ reply?: string; error?: string; source?: string; sources?: string[] }>("POST", "/api/agents/chat", { agent: chatAgent.id, message: userMessage });
       setMessages((m) => [
         ...m,
         { role: "assistant", content: data.reply ?? data.error ?? "No response from agent runtime.", source: data.source, sources: data.sources },

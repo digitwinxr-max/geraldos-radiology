@@ -10,7 +10,13 @@
  */
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { defaultProtocolFor, type HangingProtocol } from "@/lib/hanging-protocols";
+import { getList, getJson, mutate } from "@/lib/api-client";
+import { qk } from "@/lib/query-keys";
+import { useWorklist, useWorklistAll } from "@/hooks/use-worklist";
+import { useWorklistFacets } from "@/hooks/use-workflow";
+import { useNotifications, type NotificationsEnvelope } from "@/hooks/use-notifications";
 
 // ─── Types (mirror API payloads) ───
 export interface ClientConfig {
@@ -193,6 +199,15 @@ export interface NotificationItem {
   createdAt: string;
 }
 
+export interface Bookmark {
+  id: string;
+  studyId: string | null;
+  orthancStudyId: string | null;
+  label: string;
+  note: string | null;
+  createdAt: string;
+}
+
 export interface WorklistFilters {
   q: string;
   modality: string;
@@ -236,7 +251,7 @@ interface WorkstationValue {
   nextStudy: () => void;
   // Annotations / bookmarks
   annotations: Annotation[];
-  bookmarks: { id: string; studyId: string | null; orthancStudyId: string | null; label: string; note: string | null; createdAt: string }[];
+  bookmarks: Bookmark[];
   addAnnotation: (tool: string, label: string, data?: Record<string, unknown>) => Promise<void>;
   removeAnnotation: (id: string) => void;
   isBookmarked: boolean;
@@ -270,6 +285,8 @@ interface WorkstationValue {
 const WorkstationContext = createContext<WorkstationValue | null>(null);
 
 const LAYOUT_KEY = "geraldos-ws-layout";
+// Stable empty-array fallback so query-derived lists keep identity between renders.
+const EMPTY_LIST: never[] = [];
 const DEFAULT_LAYOUT: LayoutState = {
   leftWidth: 320,
   rightWidth: 380,
@@ -292,10 +309,7 @@ function loadLayout(): LayoutState {
 const VIEWS: WorklistView[] = ["today", "unread", "stat", "emergency", "assigned", "completed", "all"];
 
 export function WorkstationProvider({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<ClientConfig | null>(null);
-  const [entries, setEntries] = useState<WorklistEntry[]>([]);
-  const [allEntries, setAllEntries] = useState<WorklistEntry[]>([]);
-  const [facets, setFacets] = useState<Facets | null>(null);
+  const qc = useQueryClient();
   const [view, setViewState] = useState<WorklistView>("today");
   const [filters, setFiltersState] = useState<WorklistFilters>({
     q: "",
@@ -306,19 +320,13 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     location: "",
     priority: "",
   });
-  const [worklistLoading, setWorklistLoading] = useState(false);
-  const [pacsStudies, setPacsStudies] = useState<WorkstationValue["pacsStudies"]>([]);
   const [selected, setSelected] = useState<WorklistEntry | null>(null);
   const [studyDetail, setStudyDetail] = useState<StudyDetail | null>(null);
   const [contextData, setContextData] = useState<CaseContext | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [bookmarks, setBookmarks] = useState<WorkstationValue["bookmarks"]>([]);
   const [observations, setObservations] = useState<Observation[]>([]);
   const [report, setReport] = useState<ReportRow | null>(null);
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [assist, setAssist] = useState<AssistResult | null>(null);
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [protocol, setProtocol] = useState<HangingProtocol | null>(null);
   const [layout, setLayout] = useState<LayoutState>(DEFAULT_LAYOUT);
   const [fullscreen, setFullscreen] = useState(false);
@@ -329,106 +337,57 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     setLayout(loadLayout());
   }, []);
 
-  // ── Config + static data ──
-  const loadConfig = useCallback(async () => {
-    try {
-      const res = await fetch("/api/integrations/client-config");
-      setConfig(await res.json());
-    } catch {
-      /* offline */
-    }
-  }, []);
+  // ── Query-backed data (replaces the manual loadX callbacks) ──
+  // Shared key with useIntegrationsClientConfig — one cache entry for all consumers.
+  const configQuery = useQuery({
+    queryKey: qk.integrationsClientConfig(),
+    queryFn: () => getJson<ClientConfig>("/api/integrations/client-config"),
+    retry: false, // parity: failures were swallowed silently before
+  });
+  const config = configQuery.data ?? null;
 
-  const loadTemplates = useCallback(async () => {
-    try {
-      const res = await fetch("/api/reports/templates");
-      const d = await res.json();
-      if (res.ok) setTemplates(d.data ?? []);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const templatesQuery = useQuery({
+    queryKey: qk.reportTemplates(),
+    queryFn: async () => (await getList<Template>("/api/reports/templates")).data,
+  });
+  const templates = templatesQuery.data ?? EMPTY_LIST;
 
-  const loadEvents = useCallback(async () => {
-    try {
-      const res = await fetch("/api/events?pageSize=60");
-      const d = await res.json();
-      if (res.ok) setEvents(d.data ?? []);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const eventsQuery = useQuery({
+    queryKey: qk.events(60),
+    queryFn: async () => (await getList<EventItem>("/api/events?pageSize=60")).data,
+  });
+  const events = eventsQuery.data ?? EMPTY_LIST;
 
-  const loadNotifications = useCallback(async () => {
-    try {
-      const res = await fetch("/api/notifications?pageSize=40");
-      const d = await res.json();
-      if (res.ok) setNotifications(d.data ?? []);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const notificationsQuery = useNotifications<NotificationItem>(40, 30_000);
+  const notifications = notificationsQuery.data?.data ?? EMPTY_LIST;
 
-  const loadFacets = useCallback(async () => {
-    try {
-      const res = await fetch("/api/worklist/facets");
-      const d = await res.json();
-      if (d.ok) setFacets(d);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const bookmarksQuery = useQuery({
+    queryKey: qk.bookmarks(),
+    queryFn: async () => (await getList<Bookmark>("/api/bookmarks")).data,
+  });
+  const bookmarks = bookmarksQuery.data ?? EMPTY_LIST;
 
-  const loadBookmarks = useCallback(async () => {
-    try {
-      const res = await fetch("/api/bookmarks");
-      const d = await res.json();
-      if (res.ok) setBookmarks(d.data ?? []);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const facetsQuery = useWorklistFacets<Facets & { ok?: boolean }>();
+  const facets = facetsQuery.data && facetsQuery.data.ok ? facetsQuery.data : null;
 
-  // ── Worklist ──
-  const refreshWorklist = useCallback(async () => {
-    setWorklistLoading(true);
-    try {
-      const params = new URLSearchParams({ view });
-      if (filters.q) params.set("q", filters.q);
-      if (filters.modality) params.set("modality", filters.modality);
-      if (filters.radiologist) params.set("radiologist", filters.radiologist);
-      if (filters.machine) params.set("machine", filters.machine);
-      if (filters.physician) params.set("physician", filters.physician);
-      if (filters.location) params.set("location", filters.location);
-      if (filters.priority) params.set("priority", filters.priority);
-      const [res, allRes] = await Promise.all([
-        fetch(`/api/worklist?${params.toString()}&pageSize=200`),
-        // Unfiltered dataset powers the view counters (stable across view switches).
-        fetch("/api/worklist?view=all&pageSize=200"),
-      ]);
-      const d = await res.json();
-      const da = await allRes.json();
-      if (res.ok) setEntries(d.data ?? []);
-      if (allRes.ok) setAllEntries(da.data ?? []);
-    } catch {
-      /* offline */
-    } finally {
-      setWorklistLoading(false);
-    }
-  }, [view, filters]);
+  // ── Worklist — keyed by view + filters, polled every 30 s inside the hooks ──
+  const entriesQuery = useWorklist<WorklistEntry>(view, filters);
+  const allEntriesQuery = useWorklistAll<WorklistEntry>();
+  const entries = entriesQuery.data ?? EMPTY_LIST;
+  const allEntries = allEntriesQuery.data ?? EMPTY_LIST;
+  const worklistLoading = entriesQuery.isFetching;
 
-  useEffect(() => { refreshWorklist(); }, [refreshWorklist]);
+  const refreshWorklist = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["worklist"] });
+  }, [qc]);
 
   // ── PACS studies (for UID → orthanc id resolution) ──
-  const loadPacs = useCallback(async () => {
-    try {
-      const res = await fetch("/api/orthanc/studies");
-      const d = await res.json();
-      setPacsStudies(d.studies ?? []);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const pacsStudiesQuery = useQuery({
+    queryKey: ["orthanc", "studies"] as const,
+    queryFn: async () =>
+      (await getJson<{ studies?: WorkstationValue["pacsStudies"] }>("/api/orthanc/studies")).studies ?? [],
+  });
+  const pacsStudies = pacsStudiesQuery.data ?? EMPTY_LIST;
 
   // ── Open a study ──
   const publish = useCallback(async (type: string, aggregate: string, aggregateId: string | null, payload: Record<string, unknown> = {}) => {
@@ -473,17 +432,16 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
       // Real state transition: opening an assigned study moves it to `opened`.
       // Fire-and-forget — the server validates (forward-only, radiologist required).
       if (entry.stage === "assigned") {
-        fetch(`/api/workflow/${entry.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "transition", to: "opened", changedBy: "radiologist" }),
+        mutate("PATCH", `/api/workflow/${entry.id}`, {
+          action: "transition",
+          to: "opened",
+          changedBy: "radiologist",
         }).catch(() => {});
       }
 
       if (orthanc?.orthancId) {
         try {
-          const res = await fetch(`/api/orthanc/studies/${orthanc.orthancId}`);
-          const d = await res.json();
+          const d = await getJson<StudyDetail & { ok?: boolean }>(`/api/orthanc/studies/${orthanc.orthancId}`);
           if (d.ok && fresh()) setStudyDetail(d);
         } catch {
           /* ignore */
@@ -497,8 +455,7 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
         if (entry.patientId) cq.set("patientId", entry.patientId);
         if (orthanc?.orthancId) cq.set("orthancStudyId", orthanc.orthancId);
         if (entry.modality) cq.set("modality", entry.modality);
-        const res = await fetch(`/api/workstation/context?${cq.toString()}`);
-        const d = await res.json();
+        const d = await getJson<CaseContext & { ok?: boolean }>(`/api/workstation/context?${cq.toString()}`);
         if (d.ok && fresh()) {
           setContextData(d);
           // First previous study with a UID becomes the comparison target.
@@ -513,12 +470,12 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
       // Annotations + observations.
       try {
         const [ar, or] = await Promise.all([
-          fetch(`/api/annotations?studyId=${entry.id}`).then((r) => r.json()),
-          fetch(`/api/ai-review?studyId=${entry.id}`).then((r) => r.json()),
+          getList<Annotation>(`/api/annotations?studyId=${entry.id}`),
+          getList<Observation>(`/api/ai-review?studyId=${entry.id}`),
         ]);
         if (fresh()) {
-          setAnnotations(ar.data ?? []);
-          setObservations(or.data ?? []);
+          setAnnotations(ar.data);
+          setObservations(or.data);
         }
       } catch {
         /* ignore */
@@ -526,20 +483,18 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
 
       // Report: find existing for this study, otherwise create a draft.
       try {
-        const rr = await fetch("/api/reports?pageSize=200").then((r) => r.json());
-        const list = Array.isArray(rr.data) ? rr.data : [];
-        const existing = list.find((r: ReportRow) => r.studyId === entry.id);
+        const rr = await getList<ReportRow>("/api/reports?pageSize=200");
+        const existing = rr.data.find((r) => r.studyId === entry.id);
         if (fresh()) {
           if (existing) {
             setReport(existing);
           } else if (entry.patientId) {
-            const cr = await fetch("/api/reports", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ studyId: entry.id, patientId: entry.patientId, status: "draft" }),
+            const created = await mutate<ReportRow>("POST", "/api/reports", {
+              studyId: entry.id,
+              patientId: entry.patientId,
+              status: "draft",
             });
-            const created = await cr.json();
-            if (cr.ok && fresh()) {
+            if (fresh()) {
               setReport(created);
               publish("report.started", "report", created.id, { studyId: entry.id, procedure: entry.procedure });
             }
@@ -550,10 +505,10 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
       }
 
       // Refresh the activity streams.
-      loadEvents();
-      loadNotifications();
+      qc.invalidateQueries({ queryKey: qk.events(60) });
+      qc.invalidateQueries({ queryKey: qk.notifications(40) });
     },
-    [pacsStudies, publish, loadEvents, loadNotifications]
+    [pacsStudies, publish, qc]
   );
 
   const navigate = useCallback(
@@ -572,28 +527,24 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
   const addAnnotation = useCallback(
     async (tool: string, label: string, data: Record<string, unknown> = {}) => {
       if (!selected) return;
-      await fetch("/api/annotations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studyId: selected.id,
-          orthancStudyId: studyDetail?.study.orthancId ?? null,
-          seriesInstanceUid: null,
-          tool,
-          label,
-          data: { value: 0, units: "mm", note: label, tool, ...data },
-          createdBy: "radiologist",
-        }),
-      });
+      await mutate("POST", "/api/annotations", {
+        studyId: selected.id,
+        orthancStudyId: studyDetail?.study.orthancId ?? null,
+        seriesInstanceUid: null,
+        tool,
+        label,
+        data: { value: 0, units: "mm", note: label, tool, ...data },
+        createdBy: "radiologist",
+      }).catch(() => {});
       publish(tool === "length" ? "measurement.created" : "annotation.added", "study", selected.id, { tool, label });
-      const res = await fetch(`/api/annotations?studyId=${selected.id}`).then((r) => r.json());
-      setAnnotations(res.data ?? []);
+      const res = await getList<Annotation>(`/api/annotations?studyId=${selected.id}`).catch(() => null);
+      if (res) setAnnotations(res.data);
     },
     [selected, studyDetail, publish]
   );
 
   const removeAnnotation = useCallback(async (id: string) => {
-    await fetch(`/api/annotations/${id}`, { method: "DELETE" });
+    await mutate("DELETE", `/api/annotations/${id}`).catch(() => {});
     setAnnotations((a) => a.filter((x) => x.id !== id));
   }, []);
 
@@ -603,48 +554,36 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     if (!selected) return;
     if (isBookmarked) {
       const b = bookmarks.find((x) => x.studyId === selected.id);
-      if (b) await fetch(`/api/bookmarks/${b.id}`, { method: "DELETE" });
+      if (b) await mutate("DELETE", `/api/bookmarks/${b.id}`).catch(() => {});
     } else {
-      await fetch("/api/bookmarks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studyId: selected.id,
-          orthancStudyId: studyDetail?.study.orthancId ?? null,
-          label: `${selected.procedure} — ${selected.patientLastName ?? ""} ${selected.accessionNumber ?? ""}`.trim(),
-          userId: "radiologist",
-        }),
-      });
+      await mutate("POST", "/api/bookmarks", {
+        studyId: selected.id,
+        orthancStudyId: studyDetail?.study.orthancId ?? null,
+        label: `${selected.procedure} — ${selected.patientLastName ?? ""} ${selected.accessionNumber ?? ""}`.trim(),
+        userId: "radiologist",
+      }).catch(() => {});
     }
-    loadBookmarks();
-  }, [selected, isBookmarked, bookmarks, studyDetail, loadBookmarks]);
+    qc.invalidateQueries({ queryKey: qk.bookmarks() });
+  }, [selected, isBookmarked, bookmarks, studyDetail, qc]);
 
   // ── AI review ──
   const runAiReview = useCallback(async () => {
     if (!selected) return;
-    await fetch("/api/ai-review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        studyId: selected.id,
-        orthancStudyId: studyDetail?.study.orthancId ?? null,
-        modality: selected.modality,
-        bodyPart: selected.bodyPart,
-        procedure: selected.procedure,
-      }),
-    });
+    await mutate("POST", "/api/ai-review", {
+      studyId: selected.id,
+      orthancStudyId: studyDetail?.study.orthancId ?? null,
+      modality: selected.modality,
+      bodyPart: selected.bodyPart,
+      procedure: selected.procedure,
+    }).catch(() => {});
     publish("ai.review_completed", "study", selected.id, { modality: selected.modality });
-    const res = await fetch(`/api/ai-review?studyId=${selected.id}`).then((r) => r.json());
-    setObservations(res.data ?? []);
+    const res = await getList<Observation>(`/api/ai-review?studyId=${selected.id}`).catch(() => null);
+    if (res) setObservations(res.data);
   }, [selected, studyDetail, publish]);
 
   const reviewObservation = useCallback(
     async (id: string, status: "accepted" | "rejected") => {
-      await fetch(`/api/ai-review/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, reviewedBy: "radiologist" }),
-      });
+      await mutate("PATCH", `/api/ai-review/${id}`, { status, reviewedBy: "radiologist" }).catch(() => {});
       setObservations((obs) => obs.map((o) => (o.id === id ? { ...o, status, reviewedBy: "radiologist", reviewedAt: new Date().toISOString() } : o)));
       publish(status === "accepted" ? "ai.observation_accepted" : "ai.observation_rejected", "ai-review", id, { studyId: selected?.id });
     },
@@ -656,17 +595,13 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     async (fields: Partial<Pick<ReportRow, "findings" | "impression" | "recommendation" | "templateName">> = {}) => {
       if (!report) return;
       const merged = { ...report, ...fields };
-      await fetch(`/api/reports/${report.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          findings: merged.findings,
-          impression: merged.impression,
-          recommendation: merged.recommendation,
-          templateName: merged.templateName,
-          changedBy: "radiologist",
-        }),
-      });
+      await mutate("PATCH", `/api/reports/${report.id}`, {
+        findings: merged.findings,
+        impression: merged.impression,
+        recommendation: merged.recommendation,
+        templateName: merged.templateName,
+        changedBy: "radiologist",
+      }).catch(() => {});
       setReport(merged);
       publish("report.drafted", "report", report.id, { studyId: selected?.id });
     },
@@ -677,23 +612,25 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     if (!report) return false;
     // Guard: never sign an empty report (matches the button-level guard).
     if (!report.findings?.trim()) return false;
-    const res = await fetch(`/api/reports/${report.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "signed", approvedBy: "Dr. Radiologist" }),
-    });
-    if (!res.ok) return false;
-    const d = await res.json();
+    let d: { ok?: boolean };
+    try {
+      d = await mutate<{ ok?: boolean }>("PATCH", `/api/reports/${report.id}`, {
+        status: "signed",
+        approvedBy: "Dr. Radiologist",
+      });
+    } catch {
+      return false;
+    }
     if (d.ok) {
       setReport((r) => (r ? { ...r, status: "signed", signedAt: new Date().toISOString() } : r));
       // Real state transition: signed report moves the study to `signed`.
       // Awaited so releaseStudy (which follows) never races it.
       if (selected?.id) {
         try {
-          await fetch(`/api/workflow/${selected.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "transition", to: "signed", changedBy: "radiologist" }),
+          await mutate("PATCH", `/api/workflow/${selected.id}`, {
+            action: "transition",
+            to: "signed",
+            changedBy: "radiologist",
           });
         } catch {
           /* best effort */
@@ -708,11 +645,10 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     let ok = report?.status === "signed";
     if (!ok) ok = await signReport();
     if (!ok) return;
-    await fetch(`/api/workflow/${selected.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "released", completedAt: new Date().toISOString() }),
-    });
+    await mutate("PATCH", `/api/workflow/${selected.id}`, {
+      stage: "released",
+      completedAt: new Date().toISOString(),
+    }).catch(() => {});
     publish("report.released", "report", report?.id ?? null, { studyId: selected.id });
     publish("study.completed", "study", selected.id, { procedure: selected.procedure });
     refreshWorklist();
@@ -720,30 +656,27 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
 
   const runAssist = useCallback(async () => {
     if (!selected) return;
-    const res = await fetch("/api/reports/assist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        studyId: selected.id,
-        patientId: selected.patientId,
-        reportId: report?.id,
-        modality: selected.modality,
-        procedure: selected.procedure,
-        clinicalIndication: selected.clinicalIndication,
-        findings: report?.findings,
-        impression: report?.impression,
-        recommendation: report?.recommendation,
-      }),
-    });
-    const d = await res.json();
-    if (d.ok) setAssist(d);
+    const d = await mutate<AssistResult & { ok?: boolean }>("POST", "/api/reports/assist", {
+      studyId: selected.id,
+      patientId: selected.patientId,
+      reportId: report?.id,
+      modality: selected.modality,
+      procedure: selected.procedure,
+      clinicalIndication: selected.clinicalIndication,
+      findings: report?.findings,
+      impression: report?.impression,
+      recommendation: report?.recommendation,
+    }).catch(() => null);
+    if (d?.ok) setAssist(d);
   }, [selected, report]);
 
   // ── Notifications ──
   const markNotificationRead = useCallback(async (id: string) => {
-    await fetch(`/api/notifications/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ read: true }) });
-    setNotifications((n) => n.map((x) => (x.id === id ? { ...x, read: true } : x)));
-  }, []);
+    await mutate("PATCH", `/api/notifications/${id}`, { read: true }).catch(() => {});
+    qc.setQueryData<NotificationsEnvelope<NotificationItem> | undefined>(qk.notifications(40), (prev) =>
+      prev ? { ...prev, data: prev.data.map((x) => (x.id === id ? { ...x, read: true } : x)) } : prev
+    );
+  }, [qc]);
 
   // ── Layout ──
   const updateLayout = useCallback((patch: Partial<LayoutState>) => {
@@ -776,27 +709,23 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    loadConfig();
-    loadFacets();
-    loadBookmarks();
-    loadTemplates();
-    loadEvents();
-    loadNotifications();
-    loadPacs();
-
     // Open SSE connection for real-time events
     const sse = new EventSource("/api/events/stream");
     eventSourceRef.current = sse;
 
+    // New events land straight in the events query cache (dedup by id).
+    const pushEvent = (data: EventItem) => {
+      qc.setQueryData<EventItem[] | undefined>(qk.events(60), (prev) => {
+        const list = prev ?? [];
+        if (list.some((e) => e.id === data.id)) return list;
+        return [data, ...list].slice(0, 100);
+      });
+    };
+
     // Generic message handler — pushes new events into the activity panel
     sse.onmessage = (ev) => {
       try {
-        const data = JSON.parse(ev.data);
-        setEvents((prev) => {
-          // Deduplicate by id
-          if (prev.some((e) => e.id === data.id)) return prev;
-          return [data, ...prev].slice(0, 100);
-        });
+        pushEvent(JSON.parse(ev.data));
       } catch { /* malformed data */ }
     };
 
@@ -810,11 +739,7 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
     for (const eventType of typedEvents) {
       sse.addEventListener(eventType, (ev) => {
         try {
-          const data = JSON.parse(ev.data);
-          setEvents((prev) => {
-            if (prev.some((e) => e.id === data.id)) return prev;
-            return [data, ...prev].slice(0, 100);
-          });
+          pushEvent(JSON.parse(ev.data));
         } catch { /* malformed */ }
       });
     }
@@ -825,18 +750,14 @@ export function WorkstationProvider({ children }: { children: React.ReactNode })
       eventSourceRef.current = null;
     };
 
-    // Still poll worklist + notifications every 30s (they aren't SSE-backed yet)
-    const timer = setInterval(() => {
-      refreshWorklist();
-      loadNotifications();
-    }, 30_000);
+    // Worklist + notifications keep their 30 s poll via the queries'
+    // refetchInterval — no manual setInterval anymore.
 
     return () => {
-      clearInterval(timer);
       sse.close();
       eventSourceRef.current = null;
     };
-  }, [loadConfig, loadFacets, loadBookmarks, loadTemplates, loadEvents, loadNotifications, loadPacs, refreshWorklist]);
+  }, [qc]);
 
   const value = useMemo<WorkstationValue>(
     () => ({

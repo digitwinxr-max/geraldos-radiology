@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIntegrationsStatus } from "@/hooks/use-integrations";
 
 interface IntegrationHealth {
   key: string;
@@ -47,19 +48,10 @@ const SERVICE_ACCENT: Record<string, string> = {
 };
 
 export default function SettingsPage() {
-  const [integrations, setIntegrations] = useState<IntegrationHealth[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchStatus = useCallback(() => {
-    setLoading(true);
-    fetch("/api/integrations/status")
-      .then((r) => r.json())
-      .then((d) => setIntegrations(d.integrations ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+  // isFetching drives the spinning icon; Re-check = refetch (parity with manual fetch).
+  const statusQuery = useIntegrationsStatus<{ integrations?: IntegrationHealth[] }>();
+  const integrations = statusQuery.data?.integrations ?? [];
+  const loading = statusQuery.isFetching;
 
   return (
     <Shell title="Settings" description="Platform configuration and integrations">
@@ -76,7 +68,7 @@ export default function SettingsPage() {
               Live connectivity to the approved stack. Endpoints are configured through environment variables.
             </p>
             <button
-              onClick={fetchStatus}
+              onClick={() => statusQuery.refetch()}
               className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />

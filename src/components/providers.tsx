@@ -11,6 +11,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 30 * 1000,
             refetchOnWindowFocus: false,
+            // Pages previously swallowed fetch errors silently; keep that
+            // behavior instead of v5's default triple retry.
+            retry: false,
           },
         },
       })

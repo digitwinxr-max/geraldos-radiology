@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/ui/stat-card";
 import { FormField } from "@/components/ui/form-field";
 import { EmptyStateRow } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Package, Plus, AlertTriangle, TrendingDown } from "lucide-react";
 import { INVENTORY_CATEGORIES } from "@/lib/utils";
+import { useInventory, useCreateInventoryItem } from "@/hooks/use-inventory";
 
 interface InventoryItem {
   id: string;
@@ -40,18 +42,12 @@ interface InventoryItem {
 }
 
 export default function InventoryPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
+  const itemsQuery = useInventory<InventoryItem>();
+  const createItem = useCreateInventoryItem();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState("all");
 
-  const fetchData = useCallback(() => {
-    fetch("/api/inventory")
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d.data)) setItems(d.data); })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const items = itemsQuery.data ?? [];
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -67,13 +63,8 @@ export default function InventoryPage() {
       supplier: form.get("supplier") as string,
       location: form.get("location") as string,
     };
-    await fetch("/api/inventory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    await createItem.mutateAsync(body).catch(() => {});
     setDialogOpen(false);
-    fetchData();
   };
 
   const lowStock = items.filter((i) => i.currentStock <= i.minimumStock);
@@ -148,6 +139,10 @@ export default function InventoryPage() {
         </Dialog>
       }
     >
+      {itemsQuery.isError && !itemsQuery.data && (
+        <ErrorState message="Failed to load inventory." onRetry={() => itemsQuery.refetch()} />
+      )}
+
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-4">
         <StatCard icon={Package} value={items.length} label="Total Items" tone="text-brand bg-brand-soft" />

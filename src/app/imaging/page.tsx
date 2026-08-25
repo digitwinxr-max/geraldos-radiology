@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,13 @@ import {
   History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getJson } from "@/lib/api-client";
+import { qk } from "@/lib/query-keys";
+import { useIntegrationsClientConfig } from "@/hooks/use-integrations";
+import { useWorkflowStudies } from "@/hooks/use-workflow";
+import { useAnnotations, useCreateAnnotation, useDeleteAnnotation } from "@/hooks/use-annotations";
+import { useBookmarks, useCreateBookmark, useDeleteBookmark } from "@/hooks/use-bookmarks";
+import { useAiReviewObservations, useRunAiReview, useReviewObservation } from "@/hooks/use-ai-review";
 
 // ─── Types ───
 interface ClientConfig { ohifUrl: string; orthancProxyBase: string; }
@@ -106,23 +114,14 @@ const CONFIDENCE_TONE = (c: number) => (c >= 80 ? "text-red-600 dark:text-red-40
 
 export default function ImagingPage() {
   // ── State ──
-  const [clientConfig, setClientConfig] = useState<ClientConfig | null>(null);
-  const [pacsStudies, setPacsStudies] = useState<OrthancStudy[]>([]);
-  const [localStudies, setLocalStudies] = useState<LocalStudy[]>([]);
-  const [pacsOk, setPacsOk] = useState(false);
-  const [pacsLoading, setPacsLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedStudy, setSelectedStudy] = useState<{ orthancId: string; studyInstanceUid: string | null; patientName?: string } | null>(null);
   const [studyDetail, setStudyDetail] = useState<{ study: { series: SeriesInfo[]; patientName: string; description: string | null; modalities: string; accessionNumber: string | null; referringPhysician: string | null; patientId: string | null } } | null>(null);
   const [selectedSeries, setSelectedSeries] = useState<SeriesInfo | null>(null);
   const [comparison, setComparison] = useState<{ orthancId: string; studyInstanceUid: string | null } | null>(null);
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [observations, setObservations] = useState<Observation[]>([]);
   const [fullscreen, setFullscreen] = useState(false);
   const [annotationTool, setAnnotationTool] = useState<string | null>(null);
   const [newAnnotation, setNewAnnotation] = useState("");
-  const [patientStudies, setPatientStudies] = useState<OrthancStudy[]>([]);
   const [rightWidth, setRightWidth] = useState(340);
   const [leftWidth, setLeftWidth] = useState(300);
   const rightDrag = useRef<{ startX: number; startW: number } | null>(null);
@@ -130,72 +129,77 @@ export default function ImagingPage() {
   const workspaceRef = useRef<HTMLDivElement>(null);
 
   // ── Data ──
-  const fetchAll = useCallback(() => {
-    fetch("/api/integrations/client-config").then((r) => r.json()).then(setClientConfig).catch(() => {});
-    fetch("/api/workflow").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setLocalStudies(d.data); }).catch(() => {});
-  }, []);
+  const qc = useQueryClient();
+  const configQuery = useIntegrationsClientConfig();
+  const clientConfig = (configQuery.data as ClientConfig | undefined) ?? null;
 
-  const fetchPacs = useCallback(() => {
-    setPacsLoading(true);
-    fetch("/api/orthanc/studies")
-      .then((r) => r.json())
-      .then((d) => { setPacsOk(Boolean(d.ok)); setPacsStudies(d.studies ?? []); })
-      .catch(() => setPacsOk(false))
-      .finally(() => setPacsLoading(false));
-  }, []);
+  const localStudiesQuery = useWorkflowStudies<LocalStudy>();
+  const localStudies = useMemo(() => localStudiesQuery.data ?? [], [localStudiesQuery.data]);
 
-  useEffect(() => { fetchAll(); fetchPacs(); }, [fetchAll, fetchPacs]);
+  // PACS list — isFetching drives the "Syncing…" badge (pacsLoading parity).
+  const pacsQuery = useQuery({
+    queryKey: ["orthanc", "studies"],
+    queryFn: () => getJson<{ ok?: boolean; studies?: OrthancStudy[] }>("/api/orthanc/studies"),
+  });
+  const pacsOk = Boolean(pacsQuery.data?.ok);
+  const pacsStudies = useMemo(() => pacsQuery.data?.studies ?? [], [pacsQuery.data]);
+  const pacsLoading = pacsQuery.isFetching;
+
+  // Per-study keyed queries — enabled only once a study is selected.
+  const selectedOrthancId = selectedStudy?.orthancId;
+  const annotationsQuery = useAnnotations<Annotation>({ orthancStudyId: selectedOrthancId }, Boolean(selectedOrthancId));
+  const bookmarksQuery = useBookmarks<Bookmark>();
+  const observationsQuery = useAiReviewObservations<Observation>({ orthancStudyId: selectedOrthancId }, Boolean(selectedOrthancId));
+  const annotations = annotationsQuery.data ?? [];
+  const bookmarks = useMemo(() => bookmarksQuery.data ?? [], [bookmarksQuery.data]);
+  const observations = observationsQuery.data ?? [];
+
+  // Patient timeline: same patient's studies from PACS, keyed by patientId.
+  const timelinePatientId = studyDetail?.study.patientId ?? null;
+  const timelineQuery = useQuery({
+    queryKey: ["orthanc", "studies", "timeline", timelinePatientId ?? ""],
+    queryFn: async () => {
+      const d = await getJson<{ ok?: boolean; studies?: OrthancStudy[] }>("/api/orthanc/studies");
+      return (d.studies ?? []).filter((s) => s.patientId === timelinePatientId);
+    },
+    enabled: Boolean(timelinePatientId),
+  });
+  const patientStudies = timelineQuery.data ?? [];
+
+  const createBookmarkMutation = useCreateBookmark();
+  const deleteBookmarkMutation = useDeleteBookmark();
+  const createAnnotationMutation = useCreateAnnotation();
+  const deleteAnnotationMutation = useDeleteAnnotation();
+  const runAiReviewMutation = useRunAiReview();
+  const reviewObservationMutation = useReviewObservation();
 
   const orthancProxy = (p: string) => `${clientConfig?.orthancProxyBase ?? "/api/orthanc/proxy"}?p=${encodeURIComponent(p)}`;
 
-  const loadStudy = useCallback(async (study: OrthancStudy) => {
+  const loadStudy = async (study: OrthancStudy) => {
     setSelectedStudy({ orthancId: study.orthancId, studyInstanceUid: study.studyInstanceUid, patientName: study.patientName });
     setComparison(null);
     try {
-      const res = await fetch(`/api/orthanc/studies/${study.orthancId}`);
-      const data = await res.json();
+      const data = await getJson<{ ok?: boolean } & NonNullable<typeof studyDetail>>(`/api/orthanc/studies/${study.orthancId}`);
       if (data.ok) setStudyDetail(data);
     } catch { /* ignore */ }
-  }, []);
+  };
 
-  const loadSeries = useCallback(async (seriesId: string) => {
+  const loadSeries = async (seriesId: string) => {
     try {
-      const res = await fetch(`/api/orthanc/series/${seriesId}`);
-      const data = await res.json();
-      if (data.ok) {
+      const data = await getJson<{ ok?: boolean; series?: { instanceCount: number } }>(`/api/orthanc/series/${seriesId}`);
+      if (data.ok && data.series) {
+        const instanceCount = data.series.instanceCount;
         setStudyDetail((d) => {
           if (!d) return d;
           const idx = d.study.series.findIndex((s) => s.orthancId === seriesId);
           if (idx < 0) return d;
           const series = [...d.study.series];
-          series[idx] = { ...series[idx], instanceCount: data.series.instanceCount };
+          series[idx] = { ...series[idx], instanceCount };
           return { ...d, study: { ...d.study, series } };
         });
       }
     } catch { /* ignore */ }
-  }, []);
-
-  // Load detail + dependent data when study changes
-  useEffect(() => {
-    if (!selectedStudy) return;
-    setAnnotations([]);
-    setObservations([]);
-    // Patient timeline: same patient's studies from PACS
-    const patientId = studyDetail?.study.patientId;
-    if (patientId) {
-      fetch(`/api/orthanc/studies`)
-        .then((r) => r.json())
-        .then((d) => setPatientStudies((d.studies ?? []).filter((s: OrthancStudy) => s.patientId === patientId)))
-        .catch(() => {});
-    }
-    // Bookmarks + annotations + observations for this study
-    fetch(`/api/annotations?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setAnnotations(d.data ?? [])).catch(() => {});
-    fetch(`/api/bookmarks`).then((r) => r.json()).then((d) => setBookmarks(d.data ?? [])).catch(() => {});
-    fetch(`/api/ai-review?orthancStudyId=${selectedStudy.orthancId}`)
-      .then((r) => r.json())
-      .then((d) => setObservations(d.data ?? []))
-      .catch(() => {});
-  }, [selectedStudy?.orthancId, studyDetail?.study.patientId]);
+  };
 
   // ── Derived ──
   const allStudies = useMemo(() => {
@@ -238,62 +242,50 @@ export default function ImagingPage() {
   const isBookmarked = bookmarks.some((b) => b.orthancStudyId === selectedStudy?.orthancId);
 
   // ── Actions ──
-  const toggleBookmark = async () => {
+  const toggleBookmark = useCallback(async () => {
     if (!selectedStudy) return;
     if (isBookmarked) {
       const b = bookmarks.find((x) => x.orthancStudyId === selectedStudy.orthancId);
-      if (b) { await fetch(`/api/bookmarks/${b.id}`, { method: "DELETE" }); }
+      if (b) await deleteBookmarkMutation.mutateAsync(b.id).catch(() => {});
     } else {
-      await fetch("/api/bookmarks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orthancStudyId: selectedStudy.orthancId, label: `Bookmarked ${selectedStudy.patientName ?? "study"}`, userId: "local-user" }),
-      });
+      await createBookmarkMutation.mutateAsync({
+        orthancStudyId: selectedStudy.orthancId,
+        label: `Bookmarked ${selectedStudy.patientName ?? "study"}`,
+        userId: "local-user",
+      }).catch(() => {});
     }
-    fetch("/api/bookmarks").then((r) => r.json()).then((d) => setBookmarks(d.data ?? [])).catch(() => {});
-  };
+  }, [selectedStudy, isBookmarked, bookmarks, createBookmarkMutation, deleteBookmarkMutation]);
 
   const saveAnnotation = async () => {
     if (!selectedStudy || !annotationTool) return;
-    await fetch("/api/annotations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orthancStudyId: selectedStudy.orthancId,
-        seriesInstanceUid: selectedSeries?.seriesInstanceUid ?? null,
-        tool: annotationTool,
-        label: newAnnotation || `${annotationTool} measurement`,
-        data: { value: 0, units: "mm", note: newAnnotation, tool: annotationTool },
-        createdBy: "radiologist",
-      }),
-    });
+    await createAnnotationMutation.mutateAsync({
+      orthancStudyId: selectedStudy.orthancId,
+      seriesInstanceUid: selectedSeries?.seriesInstanceUid ?? null,
+      tool: annotationTool,
+      label: newAnnotation || `${annotationTool} measurement`,
+      data: { value: 0, units: "mm", note: newAnnotation, tool: annotationTool },
+      createdBy: "radiologist",
+    }).catch(() => {});
     setNewAnnotation("");
     setAnnotationTool(null);
-    fetch(`/api/annotations?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setAnnotations(d.data ?? [])).catch(() => {});
   };
 
   const deleteAnnotation = async (id: string) => {
-    await fetch(`/api/annotations/${id}`, { method: "DELETE" });
-    setAnnotations((a) => a.filter((x) => x.id !== id));
+    await deleteAnnotationMutation.mutateAsync(id).catch(() => {});
   };
 
   const runAiReview = async () => {
     if (!selectedStudy || !studyDetail) return;
-    await fetch("/api/ai-review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orthancStudyId: selectedStudy.orthancId, modality: studyDetail.study.modalities.split("/")[0].trim() || "X-Ray" }),
-    });
-    fetch(`/api/ai-review?orthancStudyId=${selectedStudy.orthancId}`).then((r) => r.json()).then((d) => setObservations(d.data ?? [])).catch(() => {});
+    await runAiReviewMutation.mutateAsync({
+      orthancStudyId: selectedStudy.orthancId,
+      modality: studyDetail.study.modalities.split("/")[0].trim() || "X-Ray",
+    }).catch(() => {});
   };
 
   const reviewObservation = async (id: string, status: "accepted" | "rejected") => {
-    await fetch(`/api/ai-review/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, reviewedBy: "radiologist" }),
-    });
-    setObservations((obs) => obs.map((o) => (o.id === id ? { ...o, status } : o)));
+    // Optimistic local update, then refresh the cache via invalidation.
+    qc.setQueryData<Observation[]>(qk.aiReview({ orthancStudyId: selectedOrthancId }), (obs) => (obs ?? []).map((o) => (o.id === id ? { ...o, status } : o)));
+    await reviewObservationMutation.mutateAsync({ id, body: { status, reviewedBy: "radiologist" } }).catch(() => {});
   };
 
   const toggleFullscreen = async () => {
@@ -374,7 +366,7 @@ export default function ImagingPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchPacs} className="gap-1">
+          <Button variant="outline" size="sm" onClick={() => pacsQuery.refetch()} className="gap-1">
             <RefreshCw className={cn("h-3.5 w-3.5", pacsLoading && "animate-spin")} /> Sync PACS
           </Button>
           <Button variant={isBookmarked ? "secondary" : "outline"} size="sm" onClick={toggleBookmark} className="gap-1">

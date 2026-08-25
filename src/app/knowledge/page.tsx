@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KNOWLEDGE_CATEGORIES } from "@/lib/knowledge-categories";
+import { useKnowledgeDocuments, useCreateKnowledgeDocument } from "@/hooks/use-knowledge";
+import { mutate } from "@/lib/api-client";
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   sop: ClipboardCheck,
@@ -76,7 +79,6 @@ interface ChatMessage {
 }
 
 export default function KnowledgePage() {
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [selected, setSelected] = useState<Document | null>(null);
   const [category, setCategory] = useState<string>("all");
   const [query, setQuery] = useState("");
@@ -88,16 +90,10 @@ export default function KnowledgePage() {
   const [newDoc, setNewDoc] = useState({ title: "", category: "sop", docType: "guide", summary: "", content: "", tags: "", version: "1.0", author: "Clinical Operations" });
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const fetchDocs = useCallback(async (cat = category, q = query) => {
-    const params = new URLSearchParams();
-    if (cat !== "all") params.set("category", cat);
-    if (q) params.set("q", q);
-    const res = await fetch(`/api/knowledge?${params.toString()}`);
-    const data = await res.json();
-    if (res.ok) setDocuments(data.data ?? []);
-  }, [category, query]);
-
-  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+  // Keyed by category + query — refetches per keystroke (no debounce, parity).
+  const docsQuery = useKnowledgeDocuments<Document>(category, query);
+  const createDoc = useCreateKnowledgeDocument();
+  const documents = docsQuery.data ?? [];
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
 
@@ -110,25 +106,20 @@ export default function KnowledgePage() {
     if (!newDoc.title || !newDoc.content) return;
     setEditing(true);
     try {
-      await fetch("/api/knowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newDoc.title,
-          category: newDoc.category,
-          docType: newDoc.docType,
-          summary: newDoc.summary || null,
-          content: newDoc.content,
-          tags: newDoc.tags.split(",").map((t) => t.trim()).filter(Boolean),
-          version: newDoc.version,
-          author: newDoc.author,
-          status: "published",
-          approvedBy: "Clinical Director",
-        }),
-      });
+      await createDoc.mutateAsync({
+        title: newDoc.title,
+        category: newDoc.category,
+        docType: newDoc.docType,
+        summary: newDoc.summary || null,
+        content: newDoc.content,
+        tags: newDoc.tags.split(",").map((t) => t.trim()).filter(Boolean),
+        version: newDoc.version,
+        author: newDoc.author,
+        status: "published",
+        approvedBy: "Clinical Director",
+      }).catch(() => {});
       setEditorOpen(false);
       setNewDoc({ title: "", category: "sop", docType: "guide", summary: "", content: "", tags: "", version: "1.0", author: "Clinical Operations" });
-      fetchDocs();
     } catch { /* ignore */ }
     setEditing(false);
   };
@@ -140,12 +131,7 @@ export default function KnowledgePage() {
     setChatMessages((m) => [...m, { role: "user", content: message }]);
     setChatting(true);
     try {
-      const res = await fetch("/api/agents/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent: "knowledge", message }),
-      });
-      const data = await res.json();
+      const data = await mutate<{ reply?: string; sources?: string[] }>("POST", "/api/agents/chat", { agent: "knowledge", message });
       setChatMessages((m) => [...m, { role: "assistant", content: data.reply ?? "The Knowledge Agent could not answer.", sources: data.sources ?? [] }]);
     } catch {
       setChatMessages((m) => [...m, { role: "assistant", content: "Knowledge Agent unreachable." }]);
@@ -157,6 +143,10 @@ export default function KnowledgePage() {
 
   return (
     <Shell title="Knowledge Platform" description="The organisational brain — approved SOPs, protocols, manuals and standards">
+      {docsQuery.isError && !docsQuery.data && (
+        <ErrorState message="Failed to load knowledge documents." onRetry={() => docsQuery.refetch()} />
+      )}
+
       {/* Stats strip */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Card><CardContent className="flex items-center gap-3 p-4">
@@ -186,7 +176,7 @@ export default function KnowledgePage() {
             </CardHeader>
             <CardContent className="space-y-1 pt-0">
               <button
-                onClick={() => { setCategory("all"); fetchDocs("all", query); }}
+                onClick={() => setCategory("all")}
                 className={cn("flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors", category === "all" ? "bg-brand-soft font-medium text-brand-text" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800")}
               >
                 <span>All documents</span>
@@ -197,7 +187,7 @@ export default function KnowledgePage() {
                 return (
                   <button
                     key={c.key}
-                    onClick={() => { setCategory(c.key); fetchDocs(c.key, query); }}
+                    onClick={() => setCategory(c.key)}
                     className={cn("flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors", category === c.key ? "bg-brand-soft font-medium text-brand-text" : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800")}
                   >
                     <Icon className="h-4 w-4 flex-shrink-0 text-slate-400 dark:text-slate-500" />
@@ -277,7 +267,7 @@ export default function KnowledgePage() {
                     <Input
                       placeholder="Search documents…"
                       value={query}
-                      onChange={(e) => { setQuery(e.target.value); fetchDocs(category, e.target.value); }}
+                      onChange={(e) => setQuery(e.target.value)}
                       className="h-9 w-64 pl-8 text-sm"
                     />
                   </div>

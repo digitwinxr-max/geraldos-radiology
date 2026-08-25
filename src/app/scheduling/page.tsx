@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyStateRow } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
 import { Calendar, Clock, Monitor, User } from "lucide-react";
+import { useAppointments } from "@/hooks/use-appointments";
+import { useEquipment } from "@/hooks/use-equipment";
 
 interface Appointment {
   id: string;
@@ -38,15 +41,11 @@ interface Equipment {
 }
 
 export default function SchedulingPage() {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
+  const appointmentsQuery = useAppointments<Appointment>();
+  const equipmentQuery = useEquipment<Equipment>();
 
-  const fetchData = useCallback(() => {
-    fetch("/api/appointments").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setAppointments(d.data); }).catch(() => {});
-    fetch("/api/equipment").then((r) => r.json()).then((d) => { if (Array.isArray(d.data)) setEquipmentList(d.data); }).catch(() => {});
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const appointments = appointmentsQuery.data ?? [];
+  const equipmentList = equipmentQuery.data ?? [];
 
   const today = new Date().toISOString().split("T")[0];
   const todayAppts = appointments.filter((a) => a.scheduledDate === today);
@@ -57,6 +56,10 @@ export default function SchedulingPage() {
 
   return (
     <Shell title="Scheduling" description="Machine allocation, radiographer allocation, and calendar management">
+      {appointmentsQuery.isError && !appointmentsQuery.data && (
+        <ErrorState message="Failed to load appointments." onRetry={() => appointmentsQuery.refetch()} />
+      )}
+
       {/* Calendar Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-4">
         <StatCard icon={Calendar} value={todayAppts.length} label="Today's Slots" tone="text-brand bg-brand-soft" />

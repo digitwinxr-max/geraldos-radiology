@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyStateRow } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { FormField } from "@/components/ui/form-field";
 import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
 import {
@@ -23,6 +24,8 @@ import {
 } from "@/components/ui/dialog";
 import { UserPlus, Search, Users, Clock, CheckCircle } from "lucide-react";
 import { formatDate, generateMRN } from "@/lib/utils";
+import { usePatients, useCreatePatient } from "@/hooks/use-patients";
+import { useAppointments } from "@/hooks/use-appointments";
 
 interface Patient {
   id: string;
@@ -55,30 +58,16 @@ interface Appointment {
 }
 
 export default function ReceptionPage() {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const fetchPatients = useCallback(() => {
-    const params = search ? `?search=${encodeURIComponent(search)}` : "";
-    fetch(`/api/patients${params}`)
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d.data)) setPatients(d.data); })
-      .catch(() => {});
-  }, [search]);
+  // Keyed by search — refetches per keystroke (parity with the old effect).
+  const patientsQuery = usePatients<Patient>(search || undefined);
+  const appointmentsQuery = useAppointments<Appointment>();
+  const createPatient = useCreatePatient();
 
-  const fetchAppointments = useCallback(() => {
-    fetch("/api/appointments")
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d.data)) setAppointments(d.data); })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetchPatients();
-    fetchAppointments();
-  }, [fetchPatients, fetchAppointments]);
+  const patients = patientsQuery.data ?? [];
+  const appointments = appointmentsQuery.data ?? [];
 
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -94,13 +83,8 @@ export default function ReceptionPage() {
       insuranceProvider: form.get("insuranceProvider") as string,
       insurancePolicyNumber: form.get("insurancePolicyNumber") as string,
     };
-    await fetch("/api/patients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    await createPatient.mutateAsync(body).catch(() => {});
     setDialogOpen(false);
-    fetchPatients();
   };
 
   const todayAppointments = appointments.filter((a) => {
@@ -166,6 +150,10 @@ export default function ReceptionPage() {
         </Dialog>
       }
     >
+      {patientsQuery.isError && !patientsQuery.data && (
+        <ErrorState message="Failed to load patients." onRetry={() => patientsQuery.refetch()} />
+      )}
+
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
         <StatCard icon={Users} value={patients.length} label="Total Patients" tone="text-brand bg-brand-soft" />
@@ -191,7 +179,7 @@ export default function ReceptionPage() {
                     className="pl-9"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") fetchPatients(); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") patientsQuery.refetch(); }}
                   />
                 </div>
               </div>

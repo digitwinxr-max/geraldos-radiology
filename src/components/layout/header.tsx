@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { LogOut, KeyRound, Command, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { NotificationCentre } from "@/components/notification-centre";
 import { useAppShell } from "@/components/app-shell-context";
+import { useAuthMe } from "@/hooks/use-auth-me";
 
 interface MeState {
   authenticated: boolean;
@@ -14,15 +15,10 @@ interface MeState {
 }
 
 export function Header({ title, description }: { title: string; description?: string }) {
-  const [me, setMe] = useState<MeState | null>(null);
+  // Failures resolve to null (hook parity: unauthenticated header shows Sign in).
+  const meQuery = useAuthMe<MeState>();
+  const me = meQuery.data ?? null;
   const { theme, toggleTheme, setPaletteOpen } = useAppShell();
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setMe(d))
-      .catch(() => setMe(null));
-  }, []);
 
   const initials = me?.user?.name
     ? me.user.name

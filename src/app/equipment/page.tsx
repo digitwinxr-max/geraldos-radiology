@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState } from "react";
 import { Shell } from "@/components/layout/shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FormField } from "@/components/ui/form-field";
 import { EmptyStateRow } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { UtilizationBar } from "@/components/ui/utilization-bar";
 import {
   Dialog,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Wrench, Plus, CheckCircle, AlertTriangle, XCircle, Activity } from "lucide-react";
 import { formatDate, MODALITIES } from "@/lib/utils";
+import { useEquipment, useCreateEquipment } from "@/hooks/use-equipment";
 
 interface EquipmentItem {
   id: string;
@@ -41,17 +43,11 @@ interface EquipmentItem {
 }
 
 export default function EquipmentPage() {
-  const [items, setItems] = useState<EquipmentItem[]>([]);
+  const itemsQuery = useEquipment<EquipmentItem>();
+  const createEquipment = useCreateEquipment();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const fetchData = useCallback(() => {
-    fetch("/api/equipment")
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d.data)) setItems(d.data); })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const items = itemsQuery.data ?? [];
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -64,13 +60,8 @@ export default function EquipmentPage() {
       serialNumber: form.get("serialNumber") as string,
       location: form.get("location") as string,
     };
-    await fetch("/api/equipment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    await createEquipment.mutateAsync(body).catch(() => {});
     setDialogOpen(false);
-    fetchData();
   };
 
   const statusIcon = (s: string) => {
@@ -128,6 +119,10 @@ export default function EquipmentPage() {
         </Dialog>
       }
     >
+      {itemsQuery.isError && !itemsQuery.data && (
+        <ErrorState message="Failed to load equipment." onRetry={() => itemsQuery.refetch()} />
+      )}
+
       {/* Stats */}
       <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-4">
         <StatCard icon={Wrench} value={items.length} label="Total Units" tone="text-brand bg-brand-soft" />
