@@ -1,7 +1,6 @@
 "use client";
 
 import React, { Suspense } from "react";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { KeyRound, UserRound, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,7 +23,7 @@ function LoginInner() {
       <Card className="w-full max-w-md">
         <CardHeader className="items-center text-center">
           <div className="mb-2 flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl bg-white">
-            <Image src="/gh-logo.png" alt="GH logo" width={56} height={56} className="h-14 w-14 object-contain" />
+            <img src="/gh-logo.png" alt="GH logo" width={56} height={56} className="h-14 w-14 object-contain" />
           </div>
           <CardTitle>MEDICAL DIAGNOSTIC IMAGING</CardTitle>
           <CardDescription>Fluent in Imaging</CardDescription>
