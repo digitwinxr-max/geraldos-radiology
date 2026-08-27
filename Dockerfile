@@ -8,7 +8,7 @@ FROM node:22-alpine AS base
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --force
 
 # ─── Build the Next.js application ───
 FROM base AS builder
