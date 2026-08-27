@@ -12,7 +12,7 @@
  */
 // Resolve the GeraldOS API base at runtime so the viewer works regardless of
 // the host it is served from (localhost, Docker compose, or a proxy).
-var apiBase = window.location.protocol + '//' + window.location.hostname + ':3000';
+var apiBase = window.location.protocol + '//' + window.location.host;
 
 window.config = {
   routerBasename: '/',

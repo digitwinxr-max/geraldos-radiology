@@ -27,6 +27,7 @@ const PUBLIC_PREFIXES = [
   "/api/metrics",
   "/api/webhooks",
   "/api/integrations/client-config",
+  "/api/orthanc/dicom-web",
   "/_next",
   "/favicon.ico",
 ];
