@@ -255,6 +255,13 @@ export function startOutboxRelay(intervalMs = 2000): void {
   relayStarted = true;
   g.__geraldosRelayStarted = true;
 
+  // Gracefully skip when DATABASE_URL is not configured (e.g. during builds
+  // or in deployments where the DB provisioner hasn't finished yet).
+  if (!process.env.DATABASE_URL) {
+    logger.warn("outbox relay skipped — DATABASE_URL not set");
+    return;
+  }
+
   const tick = () => {
     runOutboxRelayOnce().catch((error) => {
       logger.error("event relay crashed", { err: serializeError(error) });
