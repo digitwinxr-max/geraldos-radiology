@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/db", async () => {
   const { dbMock } = await import("../helpers/db-mock");
@@ -6,15 +6,20 @@ vi.mock("@/db", async () => {
 });
 vi.mock("@/lib/audit", () => ({
   recordAudit: vi.fn().mockResolvedValue(undefined),
+  recordAuditInTransaction: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/events", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/events")>();
-  return { ...actual, publishEvent: vi.fn().mockResolvedValue(undefined) };
+  return {
+    ...actual,
+    publishEvent: vi.fn().mockResolvedValue(undefined),
+    recordEventInTransaction: vi.fn().mockResolvedValue(undefined),
+  };
 });
 
 import { dbMock } from "../helpers/db-mock";
-import { recordAudit } from "@/lib/audit";
-import { EVENT_TYPES, publishEvent } from "@/lib/events";
+import { recordAuditInTransaction } from "@/lib/audit";
+import { EVENT_TYPES, recordEventInTransaction } from "@/lib/events";
 import {
   WORKFLOW_STAGES,
   isWorkflowStage,
@@ -130,9 +135,9 @@ describe("workflow state machine", () => {
       const res = await transitionStudy({ studyId: "s-1", to: "assigned" });
 
       expect(res).toMatchObject({ ok: true, transitioned: false, fromStage: "assigned", toStage: "assigned" });
-      expect(dbMock.callsFor("update")).toHaveLength(0);
-      expect(recordAudit).not.toHaveBeenCalled();
-      expect(publishEvent).not.toHaveBeenCalled();
+      expect(dbMock.callsFor("tx.update")).toHaveLength(0);
+      expect(recordAuditInTransaction).not.toHaveBeenCalled();
+      expect(recordEventInTransaction).not.toHaveBeenCalled();
     });
 
     it("requires a studyInstanceUid before sent_to_orthanc", async () => {
@@ -194,7 +199,7 @@ describe("workflow state machine", () => {
 
     it("allows release from the signed stage even without re-checking the report row", async () => {
       scriptStudy("signed");
-      dbMock.result([{ status: "draft" }]); // report not signed — but from === "signed"
+      dbMock.result([{ status: "draft" }]); // report not signed â€” but from === "signed"
       scriptUpdated("released");
 
       const res = await transitionStudy({ studyId: "s-1", to: "released" });
@@ -228,7 +233,8 @@ describe("workflow state machine", () => {
       const setArgs = dbMock.callsFor("set")[0].args[0] as Record<string, unknown>;
       expect(setArgs.stage).toBe("arrival");
 
-      expect(recordAudit).toHaveBeenCalledWith(
+      expect(recordAuditInTransaction).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           userId: "user-1",
           action: "workflow.transition",
@@ -239,7 +245,7 @@ describe("workflow state machine", () => {
         }),
       );
 
-      const types = vi.mocked(publishEvent).mock.calls.map((c) => c[0].type);
+      const types = vi.mocked(recordEventInTransaction).mock.calls.map((c) => (c[1] as { type: string }).type);
       expect(types).toEqual([EVENT_TYPES.APPOINTMENT_CHECKED_IN, EVENT_TYPES.WORKLIST_UPDATED]);
     });
 
@@ -250,11 +256,12 @@ describe("workflow state machine", () => {
 
       await transitionStudy({ studyId: "s-1", to: "assigned", radiologistId: "rad-1" });
 
-      expect(dbMock.callsFor("insert")).toHaveLength(1);
+      expect(dbMock.callsFor("tx.insert")).toHaveLength(1);
       const values = dbMock.callsFor("values")[0].args[0] as Record<string, unknown>;
       expect(values.userId).toBe("rad-1");
       expect(values.title).toBe("Study assigned to you");
-      expect(publishEvent).toHaveBeenCalledWith(
+      expect(recordEventInTransaction).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ type: EVENT_TYPES.STUDY_ASSIGNED }),
       );
     });
@@ -282,7 +289,8 @@ describe("workflow state machine", () => {
 
       const setArgs = dbMock.callsFor("set")[0].args[0] as Record<string, unknown>;
       expect(setArgs.startedAt).toBeInstanceOf(Date);
-      expect(publishEvent).toHaveBeenCalledWith(
+      expect(recordEventInTransaction).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ type: EVENT_TYPES.STUDY_OPENED }),
       );
     });

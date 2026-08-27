@@ -1,0 +1,1 @@
+FastAPI service exposing REST endpoints for patient, scheduling, workflow, equipment, inventory, reporting and analytics domains, backed by PostgreSQL and coordinated by a LangGraph multi-agent pipeline.

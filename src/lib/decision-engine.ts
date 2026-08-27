@@ -13,8 +13,8 @@
 import { db } from "@/db";
 import { aiRecommendations } from "@/db/schema";
 import { eq, desc, sql, count } from "drizzle-orm";
-import { recordAudit } from "@/lib/audit";
-import { publishEvent } from "@/lib/events";
+import { recordAuditInTransaction } from "@/lib/audit";
+import { recordEventInTransaction } from "@/lib/events";
 
 export interface RuleResult {
   rule: string;
@@ -88,50 +88,57 @@ export function evaluateRules(input: ProposeDecisionInput): RuleResult[] {
   return RULES.map((r) => r.check(input));
 }
 
-/** Propose a decision: rules + validation run immediately; approval is still required. */
+/** Propose a decision: rules + validation run immediately; approval is still required.
+ *
+ * The recommendation row, its audit entry and its outbox event commit in ONE
+ * database transaction (ADR-010) so a proposed decision can never exist
+ * without its audit trail.
+ */
 export async function proposeDecision(input: ProposeDecisionInput) {
   const ruleResults = evaluateRules(input);
   const rulePassed = ruleResults.every((r) => r.passed);
   const status = rulePassed ? DECISION_STATUS.VALIDATED : DECISION_STATUS.PROPOSED;
 
-  const row = await db
-    .insert(aiRecommendations)
-    .values({
-      agent: input.agent,
-      recommendation: input.recommendation,
-      rationale: input.rationale ?? null,
-      priority: input.priority ?? "routine",
-      status,
-      ruleResults,
-      validationResults: rulePassed ? [{ validator: "decision-engine", passed: true }] : [],
-      targetModule: input.targetModule ?? null,
-      targetAction: input.targetAction ?? null,
-      targetPayload: input.targetPayload ?? null,
-      requestedBy: input.requestedBy ?? "system-agent",
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(aiRecommendations)
+      .values({
+        agent: input.agent,
+        recommendation: input.recommendation,
+        rationale: input.rationale ?? null,
+        priority: input.priority ?? "routine",
+        status,
+        ruleResults,
+        validationResults: rulePassed ? [{ validator: "decision-engine", passed: true }] : [],
+        targetModule: input.targetModule ?? null,
+        targetAction: input.targetAction ?? null,
+        targetPayload: input.targetPayload ?? null,
+        requestedBy: input.requestedBy ?? "system-agent",
+      })
+      .returning();
 
-  await recordAudit({
-    userId: input.requestedBy ?? "system-agent",
-    action: "decision.proposed",
-    module: "decision-engine",
-    entityType: "ai_recommendation",
-    entityId: row[0].id,
-    details: { ruleResults, status },
-  });
-  await publishEvent({
-    type: "decision.proposed",
-    aggregate: "decision",
-    aggregateId: row[0].id,
-    payload: { agent: input.agent, status },
-  });
+    await recordAuditInTransaction(tx, {
+      userId: input.requestedBy ?? "system-agent",
+      action: "decision.proposed",
+      module: "decision-engine",
+      entityType: "ai_recommendation",
+      entityId: row.id,
+      details: { ruleResults, status },
+    });
+    await recordEventInTransaction(tx, {
+      type: "decision.proposed",
+      aggregate: "decision",
+      aggregateId: row.id,
+      payload: { agent: input.agent, status },
+    });
 
-  return row[0];
+    return row;
+  });
 }
 
 /** Load a decision, throwing if it is not in an actionable state. */
-async function requireActionable(id: string, allowed: string[]) {
-  const [row] = await db.select().from(aiRecommendations).where(eq(aiRecommendations.id, id));
+async function requireActionable(dbx: { select: typeof db.select }, id: string, allowed: string[]) {
+  const [row] = await dbx.select().from(aiRecommendations).where(eq(aiRecommendations.id, id));
   if (!row) throw new Error("decision not found");
   if (!allowed.includes(row.status)) {
     throw new Error(`decision is ${row.status}; only ${allowed.join("/")} decisions can be acted on`);
@@ -139,33 +146,39 @@ async function requireActionable(id: string, allowed: string[]) {
   return row;
 }
 
+const requireActionableInTx = requireActionable;
+
 /** Explicit human approval — required before anything can execute. */
 export async function approveDecision(id: string, approvedBy: string) {
-  await requireActionable(id, [DECISION_STATUS.PROPOSED, DECISION_STATUS.VALIDATED]);
-  const [row] = await db
-    .update(aiRecommendations)
-    .set({ status: DECISION_STATUS.APPROVED, approvedBy, approvedAt: new Date(), updatedAt: new Date() })
-    .where(eq(aiRecommendations.id, id))
-    .returning();
-  if (!row) throw new Error("decision not found");
+  return db.transaction(async (tx) => {
+    const row = await requireActionableInTx(tx, id, [DECISION_STATUS.PROPOSED, DECISION_STATUS.VALIDATED]);
+    const [updated] = await tx
+      .update(aiRecommendations)
+      .set({ status: DECISION_STATUS.APPROVED, approvedBy, approvedAt: new Date(), updatedAt: new Date() })
+      .where(eq(aiRecommendations.id, id))
+      .returning();
+    if (!updated) throw new Error("decision not found");
 
-  await recordAudit({ userId: approvedBy, action: "decision.approved", module: "decision-engine", entityType: "ai_recommendation", entityId: id });
-  await publishEvent({ type: "decision.approved", aggregate: "decision", aggregateId: id, payload: { approvedBy } });
-  return row;
+    await recordAuditInTransaction(tx, { userId: approvedBy, action: "decision.approved", module: "decision-engine", entityType: "ai_recommendation", entityId: id });
+    await recordEventInTransaction(tx, { type: "decision.approved", aggregate: "decision", aggregateId: id, payload: { approvedBy } });
+    return updated;
+  });
 }
 
 export async function rejectDecision(id: string, rejectedBy: string, reason?: string) {
-  await requireActionable(id, [DECISION_STATUS.PROPOSED, DECISION_STATUS.VALIDATED, DECISION_STATUS.APPROVED]);
-  const [row] = await db
-    .update(aiRecommendations)
-    .set({ status: DECISION_STATUS.REJECTED, updatedAt: new Date() })
-    .where(eq(aiRecommendations.id, id))
-    .returning();
-  if (!row) throw new Error("decision not found");
+  return db.transaction(async (tx) => {
+    await requireActionableInTx(tx, id, [DECISION_STATUS.PROPOSED, DECISION_STATUS.VALIDATED, DECISION_STATUS.APPROVED]);
+    const [row] = await tx
+      .update(aiRecommendations)
+      .set({ status: DECISION_STATUS.REJECTED, updatedAt: new Date() })
+      .where(eq(aiRecommendations.id, id))
+      .returning();
+    if (!row) throw new Error("decision not found");
 
-  await recordAudit({ userId: rejectedBy, action: "decision.rejected", module: "decision-engine", entityType: "ai_recommendation", entityId: id, details: { reason } });
-  await publishEvent({ type: "decision.rejected", aggregate: "decision", aggregateId: id, payload: { rejectedBy, reason } });
-  return row;
+    await recordAuditInTransaction(tx, { userId: rejectedBy, action: "decision.rejected", module: "decision-engine", entityType: "ai_recommendation", entityId: id, details: { reason } });
+    await recordEventInTransaction(tx, { type: "decision.rejected", aggregate: "decision", aggregateId: id, payload: { rejectedBy, reason } });
+    return row;
+  });
 }
 
 // ─── Whitelisted executions (safe, idempotent, reversible-ish) ───
@@ -224,12 +237,23 @@ export async function executeDecision(id: string, executedBy: string) {
       : { ok: true, detail: `no-op action ${row.targetModule}:${row.targetAction}` };
 
     const status = outcome.ok ? DECISION_STATUS.EXECUTED : DECISION_STATUS.FAILED;
-    await db.update(aiRecommendations).set({ status, executedAt: new Date(), updatedAt: new Date() }).where(eq(aiRecommendations.id, id));
-    await recordAudit({ userId: executedBy, action: `decision.executed${outcome.ok ? "" : "_failed"}`, module: "decision-engine", entityType: "ai_recommendation", entityId: id, details: outcome });
-    await publishEvent({ type: "decision.executed", aggregate: "decision", aggregateId: id, payload: outcome });
+    await db.transaction(async (tx) => {
+      await tx
+        .update(aiRecommendations)
+        .set({ status, executedAt: new Date(), updatedAt: new Date() })
+        .where(eq(aiRecommendations.id, id));
+      await recordAuditInTransaction(tx, { userId: executedBy, action: `decision.executed${outcome.ok ? "" : "_failed"}`, module: "decision-engine", entityType: "ai_recommendation", entityId: id, details: outcome });
+      await recordEventInTransaction(tx, { type: "decision.executed", aggregate: "decision", aggregateId: id, payload: outcome });
+    });
     return { ...outcome, status };
   } catch (error) {
-    await db.update(aiRecommendations).set({ status: DECISION_STATUS.FAILED, updatedAt: new Date() }).where(eq(aiRecommendations.id, id));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(aiRecommendations)
+        .set({ status: DECISION_STATUS.FAILED, updatedAt: new Date() })
+        .where(eq(aiRecommendations.id, id));
+      await recordAuditInTransaction(tx, { userId: executedBy, action: "decision.execution_crashed", module: "decision-engine", entityType: "ai_recommendation", entityId: id });
+    });
     throw error;
   }
 }

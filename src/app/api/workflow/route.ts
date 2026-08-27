@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { workflowStudies } from "@/db/schema";
+import { createWorkflowStudy, listWorkflowStudies } from "@/services/workflow-service";
 import { generateAccessionNumber } from "@/lib/utils";
-import { recordAudit } from "@/lib/audit";
-import { publishEvent, EVENT_TYPES } from "@/lib/events";
 import { withAuth } from "@/lib/middleware-helpers";
 import { validateBody, createStudySchema } from "@/lib/validation";
 import { internalError } from "@/lib/api-error";
 import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
-import { listWorkflowStudies } from "@/services/workflow-service";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +27,8 @@ export async function GET(request: NextRequest) {
  * POST /api/workflow — create a study at the entry point of the pipeline.
  *
  * A study is born at `referral`. Optionally link an appointment; the study then
- * flows through the state machine exactly like every other study.
+ * flows through the state machine exactly like every other study. Creation,
+ * audit and events are committed atomically by the service.
  */
 export async function POST(request: NextRequest) {
   return withAuth(request, "workflow.write", async (user) => {
@@ -39,9 +36,8 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) return parsed.error;
 
     try {
-      const [study] = await db
-        .insert(workflowStudies)
-        .values({
+      const study = await createWorkflowStudy(
+        {
           patientId: parsed.data.patientId,
           appointmentId: parsed.data.appointmentId ?? null,
           accessionNumber: generateAccessionNumber(),
@@ -50,34 +46,9 @@ export async function POST(request: NextRequest) {
           bodyPart: parsed.data.bodyPart ?? null,
           stage: "referral",
           priority: parsed.data.priority,
-        })
-        .returning();
-
-      await recordAudit({
-        userId: user.sub,
-        action: "workflow.created",
-        module: "workflow",
-        entityType: "workflow_study",
-        entityId: study.id,
-        details: { procedure: study.procedure, modality: study.modality },
-      });
-      await publishEvent({
-        type: EVENT_TYPES.REFERRAL_RECEIVED,
-        aggregate: "study",
-        aggregateId: study.id,
-        payload: {
-          accessionNumber: study.accessionNumber,
-          procedure: study.procedure,
-          modality: study.modality,
         },
-      });
-      await publishEvent({
-        type: EVENT_TYPES.WORKLIST_UPDATED,
-        aggregate: "workflow",
-        aggregateId: study.id,
-        payload: { reason: "study.created" },
-      });
-
+        user.sub,
+      );
       return NextResponse.json({ ok: true, study }, { status: 201 });
     } catch (error) {
       return internalError(error);

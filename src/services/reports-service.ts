@@ -81,33 +81,20 @@ export async function getReport(id: string) {
   return row ?? null;
 }
 
-export async function signReport(id: string, signedBy: string) {
-  const [row] = await db
-    .update(reports)
-    .set({ status: "signed", signedAt: new Date(), updatedAt: new Date() })
-    .where(eq(reports.id, id))
-    .returning();
-
-  if (!row) return null;
-
-  await recordAudit({
-    userId: signedBy,
-    action: "report.signed",
-    module: "reporting",
-    entityType: "report",
-    entityId: id,
-  });
-  await publishEvent({
-    type: EVENT_TYPES.REPORT_SIGNED,
-    aggregate: "report",
-    aggregateId: id,
-    payload: { signedBy },
-  });
-
-  return row;
+export interface SaveVersionMeta {
+  qualityScore?: number | null;
+  aiAssisted?: boolean;
 }
 
-export async function saveReportVersion(reportId: string, changedBy: string) {
+/**
+ * Snapshot the CURRENT report content into report_versions as the next version.
+ * The single canonical implementation — the PATCH route delegates here.
+ */
+export async function saveReportVersion(
+  reportId: string,
+  changedBy: string,
+  meta: SaveVersionMeta = {},
+) {
   const [report] = await db.select().from(reports).where(eq(reports.id, reportId));
   if (!report) return null;
 
@@ -129,6 +116,8 @@ export async function saveReportVersion(reportId: string, changedBy: string) {
       impression: report.impression,
       recommendation: report.recommendation,
       status: report.status,
+      qualityScore: meta.qualityScore ?? null,
+      aiAssisted: meta.aiAssisted ?? false,
       changedBy,
     })
     .returning();

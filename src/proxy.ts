@@ -3,13 +3,20 @@
  *
  * Next.js 16 uses the "proxy" file convention (replacing the older "middleware"
  * convention). Every request passes through here before reaching a page or API
- * route. When Keycloak is not configured the platform runs in degraded (bypass)
- * mode so it remains usable during integration setup.
+ * route.
+ *
+ * Policy (fail closed):
+ *  - Keycloak configured: the session cookie is verified on every non-public
+ *    request; invalid sessions get 401 (API) or a login redirect (pages).
+ *  - Keycloak NOT configured: production refuses all non-public traffic with
+ *    IDENTITY_NOT_CONFIGURED. In development the bypass is available only as
+ *    an explicit opt-in (DEV_AUTH=true) and every bypassed request is logged.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 // ─── Public routes that never require authentication ───
 
@@ -28,6 +35,25 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+// ─── Fail-closed responses when no identity provider is configured ───
+
+function identityNotConfigured(request: NextRequest): NextResponse {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "IDENTITY_NOT_CONFIGURED",
+          message: "The identity provider is not configured. Production requires Keycloak.",
+        },
+      },
+      { status: 503 },
+    );
+  }
+  return NextResponse.redirect(
+    new URL("/login?error=identity_not_configured", request.nextUrl.origin),
+  );
+}
+
 // ─── Proxy handler ───
 
 export async function proxy(request: NextRequest) {
@@ -38,10 +64,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // When Keycloak is not configured, run in degraded mode so the platform
-  // remains usable while identity services are being provisioned.
+  // Without Keycloak the platform must never serve protected traffic silently.
   if (!env.keycloakUrl) {
-    return NextResponse.next();
+    // Explicit development opt-in keeps the platform demoable while identity
+    // services are being provisioned; every bypass is logged.
+    if (!env.isProduction && env.devAuthEnabled) {
+      logger.warn("degraded auth bypass active (DEV_AUTH=true, Keycloak not configured)", {
+        path: pathname,
+      });
+      return NextResponse.next();
+    }
+    return identityNotConfigured(request);
   }
 
   // Verify the session cookie using the same logic as the rest of the app.

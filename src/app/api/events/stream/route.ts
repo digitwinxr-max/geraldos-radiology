@@ -2,25 +2,38 @@
  * GET /api/events/stream — Server-Sent Events stream for real-time workstation updates.
  *
  * Clients open an EventSource against this endpoint. Every ~5 seconds the server
- * checks for new events since the last `Last-Event-ID` and pushes them. When Redis
- * is available the check is via XREAD; otherwise it polls the event_log table.
+ * polls the durable event_log table for new events since the last
+ * `Last-Event-ID` and pushes them. (Redis is only a fan-out channel — the
+ * stream always reads the durable record.)
  *
  * The endpoint keeps a connection alive until the client disconnects.
  *
- * Exempt from withAuth — SSE streams return raw Response objects and the global
- * proxy middleware handles session validation for streaming clients.
+ * Exempt from withAuth (SSE streams return raw Response objects), but the
+ * session is verified explicitly here so the stream never depends on the
+ * edge proxy's mode: unauthenticated clients receive a 401.
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { eventLog } from "@/db/schema";
-import { desc, gt, sql } from "drizzle-orm";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
+import { asc, desc, gt, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
 const POLL_INTERVAL_MS = 5000;
 
 export async function GET(request: NextRequest) {
+  // Explicit session gate — independent of the proxy's configuration mode.
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const user = token ? await verifySessionToken(token) : null;
+  if (!user) {
+    return NextResponse.json(
+      { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+      { status: 401 },
+    );
+  }
+
   const lastIdHeader = request.headers.get("Last-Event-ID") ?? request.nextUrl.searchParams.get("lastId");
   let lastId = lastIdHeader ? parseInt(lastIdHeader, 10) : 0;
   if (isNaN(lastId)) lastId = 0;
@@ -40,6 +53,9 @@ export async function GET(request: NextRequest) {
 
       while (!closed) {
         try {
+          // First poll (no cursor): show the most recent events. Once a cursor
+          // exists, walk forward in insertion order so no event is skipped
+          // even when more than one page arrives between polls.
           const rows = await db
             .select({
               id: eventLog.id,
@@ -52,7 +68,7 @@ export async function GET(request: NextRequest) {
             })
             .from(eventLog)
             .where(lastId > 0 ? gt(eventLog.id, lastId) : sql`true`)
-            .orderBy(desc(eventLog.id))
+            .orderBy(lastId > 0 ? asc(eventLog.id) : desc(eventLog.id))
             .limit(20);
 
           if (rows.length > 0) {

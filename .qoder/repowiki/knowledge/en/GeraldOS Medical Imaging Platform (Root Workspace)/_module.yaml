@@ -1,0 +1,20 @@
+schema_version: 1
+module_path: ""
+title: GeraldOS Medical Imaging Platform (Root Workspace)
+scope:
+    - README.md
+    - .gitignore
+    - package.json
+    - package-lock.json
+    - next.config.ts
+    - tsconfig.json
+    - eslint.config.mjs
+    - postcss.config.mjs
+    - vitest.config.ts
+    - drizzle.config.json
+    - docker-compose.yml
+    - .env.example
+    - next-env.d.ts
+source_files: []
+depends_on: []
+related_to: []

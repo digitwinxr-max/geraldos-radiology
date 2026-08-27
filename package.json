@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "test:integration": "vitest run --config vitest.integration.config.mts"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",

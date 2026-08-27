@@ -1,0 +1,1 @@
+Node.js native `http` module for in-memory mock servers (Keycloak OIDC with RS256 JWTs, FHIR R4, Dicoogle search, n8n, OHIF); Python + LangGraph `StateGraph` for the multi-agent routing graph; Bash orchestrator invoking Redis, Orthanc, MinIO, and a Uvicorn-hosted LangGraph API.

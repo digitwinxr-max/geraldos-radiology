@@ -29,8 +29,10 @@ function contentSecurityPolicy(): string {
   const connectSrc = isProduction ? "'self'" : "'self' ws: wss:";
 
   // The OHIF viewer is embedded in an iframe on the imaging/workstation pages.
+  // The browser-facing origin (OHIF_PUBLIC_URL ?? OHIF_URL) is what must be
+  // admitted in frame-src.
   let frameSrc = "'self'";
-  const ohifUrl = process.env.OHIF_URL ?? "";
+  const ohifUrl = process.env.OHIF_PUBLIC_URL || process.env.OHIF_URL || "";
   if (ohifUrl) {
     try {
       frameSrc += ` ${new URL(ohifUrl).origin}`;

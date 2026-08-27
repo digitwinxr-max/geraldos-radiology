@@ -231,7 +231,9 @@ describe("domain schemas", () => {
     accepts(reviewObservationSchema, { status: "accepted", reviewedBy: "dr-naidoo" });
     accepts(reviewObservationSchema, { status: "rejected", reviewedBy: "dr-naidoo" });
     rejects(reviewObservationSchema, { status: "pending", reviewedBy: "dr-naidoo" });
-    rejects(reviewObservationSchema, { status: "accepted" });
+    // reviewedBy is optional — the route attributes reviews from the verified
+    // session, so a body-supplied identity is ignored, not required.
+    accepts(reviewObservationSchema, { status: "accepted" });
   });
 
   it("decisionActionSchema — action limited to approve/reject/execute", () => {

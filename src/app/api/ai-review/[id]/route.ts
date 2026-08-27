@@ -17,10 +17,14 @@ export const dynamic = "force-dynamic";
  * Everything is audited and an event is published.
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(request, "ai-review.write", async () => {
+  return withAuth(request, "ai-review.write", async (user) => {
     const { id } = await params;
     const v = await validateBody(request, reviewObservationSchema);
     if (!v.success) return v.error;
+
+    // Attribution always comes from the verified session, never the body —
+    // accept/reject decisions are part of the clinical audit trail.
+    const reviewedBy = user.name || user.sub;
 
     try {
       const [existing] = await db.select().from(aiObservations).where(eq(aiObservations.id, id));
@@ -28,12 +32,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       const [row] = await db
         .update(aiObservations)
-        .set({ status: v.data.status, reviewedBy: v.data.reviewedBy, reviewedAt: new Date() })
+        .set({ status: v.data.status, reviewedBy, reviewedAt: new Date() })
         .where(eq(aiObservations.id, id))
         .returning();
 
       await recordAudit({
-        userId: v.data.reviewedBy,
+        userId: reviewedBy,
         action: `ai.observation_${v.data.status}`,
         module: "ai-review",
         entityType: "ai_observation",
@@ -44,7 +48,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         type: v.data.status === "accepted" ? "ai.observation_accepted" : "ai.observation_rejected",
         aggregate: "ai-review",
         aggregateId: id,
-        payload: { reviewedBy: v.data.reviewedBy, modality: existing.modality, region: existing.region },
+        payload: { reviewedBy, modality: existing.modality, region: existing.region },
       });
 
       return NextResponse.json({ ok: true, observation: row });

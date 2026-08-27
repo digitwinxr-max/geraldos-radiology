@@ -6,15 +6,20 @@ vi.mock("@/db", async () => {
 });
 vi.mock("@/lib/audit", () => ({
   recordAudit: vi.fn().mockResolvedValue(undefined),
+  recordAuditInTransaction: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/events", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/events")>();
-  return { ...actual, publishEvent: vi.fn().mockResolvedValue(undefined) };
+  return {
+    ...actual,
+    publishEvent: vi.fn().mockResolvedValue(undefined),
+    recordEventInTransaction: vi.fn().mockResolvedValue(undefined),
+  };
 });
 
 import { dbMock } from "../helpers/db-mock";
-import { recordAudit } from "@/lib/audit";
-import { EVENT_TYPES, publishEvent } from "@/lib/events";
+import { recordAuditInTransaction } from "@/lib/audit";
+import { EVENT_TYPES, recordEventInTransaction } from "@/lib/events";
 import {
   WORKFLOW_STAGES,
   createWorkflowStudy,
@@ -72,22 +77,27 @@ describe("workflow service", () => {
   describe("createWorkflowStudy", () => {
     const input = { patientId: "p-1", modality: "MRI", procedure: "Brain MRI" };
 
-    it("inserts the study and returns the created row", async () => {
+    it("inserts the study atomically with audit + outbox events, and returns the row", async () => {
       const row = { id: "s-1", stage: "referral", ...input };
       dbMock.result([row]);
 
-      await expect(createWorkflowStudy(input)).resolves.toEqual(row);
+      await expect(createWorkflowStudy(input, "user-1")).resolves.toEqual(row);
+      // Everything happens inside one transaction (ADR-010).
+      expect(dbMock.callsFor("transaction")).toHaveLength(1);
+      expect(dbMock.callsFor("tx.insert")).toHaveLength(1);
       expect(dbMock.callsFor("values")[0].args).toEqual([input]);
       expect(dbMock.callsFor("returning")).toHaveLength(1);
     });
 
-    it("records an audit entry and publishes study.created", async () => {
+    it("records an audit entry and queues study.created + worklist events", async () => {
       dbMock.result([{ id: "s-1", ...input }]);
 
-      await createWorkflowStudy(input);
+      await createWorkflowStudy(input, "user-1");
 
-      expect(recordAudit).toHaveBeenCalledWith(
+      expect(recordAuditInTransaction).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
+          userId: "user-1",
           action: "study.created",
           module: "workflow",
           entityType: "workflow_study",
@@ -95,12 +105,20 @@ describe("workflow service", () => {
           details: { modality: "MRI", procedure: "Brain MRI" },
         }),
       );
-      expect(publishEvent).toHaveBeenCalledWith(
+      expect(recordEventInTransaction).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           type: EVENT_TYPES.STUDY_CREATED,
           aggregate: "study",
           aggregateId: "s-1",
           payload: { modality: "MRI", procedure: "Brain MRI" },
+        }),
+      );
+      expect(recordEventInTransaction).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: EVENT_TYPES.WORKLIST_UPDATED,
+          aggregateId: "s-1",
         }),
       );
     });

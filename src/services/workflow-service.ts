@@ -8,8 +8,8 @@
 import { db } from "@/db";
 import { workflowStudies, patients, staff } from "@/db/schema";
 import { eq, desc, count } from "drizzle-orm";
-import { publishEvent, EVENT_TYPES } from "@/lib/events";
-import { recordAudit } from "@/lib/audit";
+import { EVENT_TYPES, recordEventInTransaction } from "@/lib/events";
+import { recordAuditInTransaction } from "@/lib/audit";
 import { transitionStudy, WORKFLOW_STAGES, stageLabel } from "@/lib/workflow";
 import { orderByDir, type ServiceListOpts } from "@/lib/list-query";
 
@@ -62,24 +62,41 @@ export async function listWorkflowStudies(opts: ServiceListOpts) {
   };
 }
 
-export async function createWorkflowStudy(input: typeof workflowStudies.$inferInsert) {
-  const [row] = await db.insert(workflowStudies).values(input).returning();
+/**
+ * Create a study at the pipeline entry point — atomically with its audit
+ * entry and both outbox events (ADR-010). This is the ONLY sanctioned creation
+ * path; API routes delegate here.
+ */
+export async function createWorkflowStudy(
+  input: typeof workflowStudies.$inferInsert,
+  actor?: string,
+) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(workflowStudies).values(input).returning();
 
-  await recordAudit({
-    action: "study.created",
-    module: "workflow",
-    entityType: "workflow_study",
-    entityId: row.id,
-    details: { modality: row.modality, procedure: row.procedure },
-  });
-  await publishEvent({
-    type: EVENT_TYPES.STUDY_CREATED,
-    aggregate: "study",
-    aggregateId: row.id,
-    payload: { modality: row.modality, procedure: row.procedure },
-  });
+    await recordAuditInTransaction(tx, {
+      userId: actor ?? "system",
+      action: "study.created",
+      module: "workflow",
+      entityType: "workflow_study",
+      entityId: row.id,
+      details: { modality: row.modality, procedure: row.procedure },
+    });
+    await recordEventInTransaction(tx, {
+      type: EVENT_TYPES.STUDY_CREATED,
+      aggregate: "study",
+      aggregateId: row.id,
+      payload: { modality: row.modality, procedure: row.procedure },
+    });
+    await recordEventInTransaction(tx, {
+      type: EVENT_TYPES.WORKLIST_UPDATED,
+      aggregate: "workflow",
+      aggregateId: row.id,
+      payload: { reason: "study.created" },
+    });
 
-  return row;
+    return row;
+  });
 }
 
 export async function getWorkflowStudy(id: string) {

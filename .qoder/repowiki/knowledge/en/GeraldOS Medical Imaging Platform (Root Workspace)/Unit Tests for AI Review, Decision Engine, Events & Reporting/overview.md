@@ -1,0 +1,1 @@
+Vitest unit tests covering the AI review assistant, decision engine rule evaluation, event bus persistence, and reporting assistant utilities used across the medical imaging platform.

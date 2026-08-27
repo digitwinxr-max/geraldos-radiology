@@ -22,9 +22,9 @@
 
 import { db } from "@/db";
 import { workflowStudies, notifications, reports } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
-import { recordAudit } from "@/lib/audit";
-import { publishEvent, EVENT_TYPES } from "@/lib/events";
+import { and, eq, sql } from "drizzle-orm";
+import { recordAuditInTransaction } from "@/lib/audit";
+import { recordEventInTransaction, EVENT_TYPES } from "@/lib/events";
 
 export interface WorkflowStage {
   key: string;
@@ -112,125 +112,148 @@ export async function transitionStudy(opts: {
     return { ok: false, status: 400, error: `"${to}" is not a valid workflow stage` };
   }
 
-  const [study] = await db.select().from(workflowStudies).where(eq(workflowStudies.id, studyId));
-  if (!study) return { ok: false, status: 404, error: "Study not found" };
+  // The whole transition — guard reads, conditional update, audit and events —
+  // runs in ONE transaction (ADR-010): a committed stage change can never lose
+  // its audit entry or its outbox event.
+  return db.transaction(async (tx): Promise<TransitionResult> => {
+    const [study] = await tx.select().from(workflowStudies).where(eq(workflowStudies.id, studyId));
+    if (!study) return { ok: false, status: 404, error: "Study not found" };
 
-  const from = study.stage;
-  const fromIdx = stageIndex(from);
-  const toIdx = stageIndex(to);
+    const from = study.stage;
+    const fromIdx = stageIndex(from);
+    const toIdx = stageIndex(to);
 
-  if (toIdx < 0) return { ok: false, status: 400, error: `Unknown current stage "${from}"` };
-  if (toIdx < fromIdx) {
-    return {
-      ok: false,
-      status: 409,
-      error: `Cannot move study from "${stageLabel(from)}" backwards to "${stageLabel(to)}"`,
-    };
-  }
-  if (toIdx === fromIdx) {
-    return { ok: true, study, fromStage: from, toStage: to, transitioned: false };
-  }
-
-  // Guards — hard requirements for clinically meaningful stages.
-  if (to === "sent_to_orthanc" && !study.studyInstanceUid && !opts.studyInstanceUid) {
-    return {
-      ok: false,
-      status: 400,
-      error: "Study must be present in Orthanc (a DICOM studyInstanceUid) before it can be marked 'Sent to Orthanc'",
-    };
-  }
-  if (to === "assigned" && !study.radiologistId && !opts.radiologistId) {
-    return { ok: false, status: 400, error: "A radiologist must be assigned before the study can be marked 'Assigned'" };
-  }
-  if (to === "opened" && !study.radiologistId && !opts.radiologistId) {
-    return { ok: false, status: 400, error: "Assign a radiologist before opening the study" };
-  }
-  // Hard handoff guards — a study can only be released once its report is
-  // signed, and only released studies can be archived.
-  if (to === "signed") {
-    const [rep] = await db.select({ status: reports.status }).from(reports).where(eq(reports.studyId, studyId)).limit(1);
-    if (rep?.status !== "signed" && from !== "signed") {
-      return { ok: false, status: 400, error: "Report must be signed by the radiologist before the study can be marked 'Report Signed'" };
+    if (toIdx < 0) return { ok: false, status: 400, error: `Unknown current stage "${from}"` };
+    if (toIdx < fromIdx) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Cannot move study from "${stageLabel(from)}" backwards to "${stageLabel(to)}"`,
+      };
     }
-  }
-  if (to === "released") {
-    const [rep] = await db.select({ status: reports.status }).from(reports).where(eq(reports.studyId, studyId)).limit(1);
-    const signed = rep?.status === "signed" || from === "signed" || from === "released";
-    if (!signed) {
-      return { ok: false, status: 400, error: "Report must be signed before the study can be released" };
+    if (toIdx === fromIdx) {
+      return { ok: true, study, fromStage: from, toStage: to, transitioned: false };
     }
-  }
-  if (to === "archived" && from !== "released") {
-    return { ok: false, status: 400, error: "Only released studies can be archived" };
-  }
 
-  // Timestamps that reflect real lifecycle milestones.
-  const updates: Record<string, unknown> = { stage: to, updatedAt: new Date() };
-  if (to === "sent_to_orthanc" && opts.studyInstanceUid) updates.studyInstanceUid = opts.studyInstanceUid;
-  if (to === "assigned" && opts.radiologistId) updates.radiologistId = opts.radiologistId;
-  if (to === "opened" && !study.startedAt) updates.startedAt = new Date();
-  if (to === "released" && !study.completedAt) updates.completedAt = new Date();
-
-  const [updated] = await db
-    .update(workflowStudies)
-    .set(updates)
-    .where(eq(workflowStudies.id, studyId))
-    .returning();
-
-  const payload = {
-    fromStage: from,
-    toStage: to,
-    accessionNumber: updated.accessionNumber,
-    modality: updated.modality,
-    procedure: updated.procedure,
-    changedBy,
-  };
-
-  // Audit — immutable record of every transition.
-  await recordAudit({
-    userId: changedBy,
-    action: `workflow.transition`,
-    module: "workflow",
-    entityType: "workflow_study",
-    entityId: studyId,
-    details: payload,
-  });
-
-  // Events — the stage milestone plus an automatic worklist refresh signal.
-  const stage = stageMeta(to);
-  if (stage) {
-    await publishEvent({ type: stage.event, aggregate: "study", aggregateId: studyId, payload });
-  }
-  await publishEvent({ type: EVENT_TYPES.WORKLIST_UPDATED, aggregate: "workflow", aggregateId: studyId, payload });
-
-  // Notifications for clinically significant handoffs.
-  try {
-    if (to === "assigned") {
-      const radioId = (opts.radiologistId ?? study.radiologistId) ?? "all";
-      await db.insert(notifications).values({
-        userId: radioId,
-        title: "Study assigned to you",
-        body: `${updated.procedure} (${updated.modality}) — ${updated.accessionNumber ?? ""} is ready for review`,
-        type: "info",
-        severity: "normal",
-        link: `/workstation?studyId=${studyId}`,
-      });
+    // Guards — hard requirements for clinically meaningful stages.
+    if (to === "sent_to_orthanc" && !study.studyInstanceUid && !opts.studyInstanceUid) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Study must be present in Orthanc (a DICOM studyInstanceUid) before it can be marked 'Sent to Orthanc'",
+      };
+    }
+    if (to === "assigned" && !study.radiologistId && !opts.radiologistId) {
+      return { ok: false, status: 400, error: "A radiologist must be assigned before the study can be marked 'Assigned'" };
+    }
+    if (to === "opened" && !study.radiologistId && !opts.radiologistId) {
+      return { ok: false, status: 400, error: "Assign a radiologist before opening the study" };
+    }
+    // Hard handoff guards — a study can only be released once its report is
+    // signed, and only released studies can be archived.
+    if (to === "signed") {
+      const [rep] = await tx.select({ status: reports.status }).from(reports).where(eq(reports.studyId, studyId)).limit(1);
+      if (rep?.status !== "signed" && from !== "signed") {
+        return { ok: false, status: 400, error: "Report must be signed by the radiologist before the study can be marked 'Report Signed'" };
+      }
     }
     if (to === "released") {
-      await db.insert(notifications).values({
-        userId: "all",
-        title: "Report released",
-        body: `Report released for ${updated.procedure} (${updated.accessionNumber ?? ""})`,
-        type: "success",
-        severity: "normal",
-        link: `/workstation?studyId=${studyId}`,
-      });
+      const [rep] = await tx.select({ status: reports.status }).from(reports).where(eq(reports.studyId, studyId)).limit(1);
+      const signed = rep?.status === "signed" || from === "signed" || from === "released";
+      if (!signed) {
+        return { ok: false, status: 400, error: "Report must be signed before the study can be released" };
+      }
     }
-  } catch {
-    /* notification failure never blocks the transition */
-  }
+    if (to === "archived" && from !== "released") {
+      return { ok: false, status: 400, error: "Only released studies can be archived" };
+    }
 
-  return { ok: true, study: updated, fromStage: from, toStage: to, transitioned: true };
+    // Timestamps that reflect real lifecycle milestones.
+    const updates: Record<string, unknown> = { stage: to, updatedAt: new Date() };
+    if (to === "sent_to_orthanc" && opts.studyInstanceUid) updates.studyInstanceUid = opts.studyInstanceUid;
+    if (to === "assigned" && opts.radiologistId) updates.radiologistId = opts.radiologistId;
+    if (to === "opened" && !study.startedAt) updates.startedAt = new Date();
+    if (to === "released" && !study.completedAt) updates.completedAt = new Date();
+
+    // Optimistic concurrency: only update when the stage still matches the row
+    // this decision was made on. A 0-row update means a concurrent transition
+    // won the race — reject with 409 instead of silently double-applying.
+    const [updated] = await tx
+      .update(workflowStudies)
+      .set(updates)
+      .where(and(eq(workflowStudies.id, studyId), eq(workflowStudies.stage, from)))
+      .returning();
+
+    if (!updated) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Study stage changed concurrently (no longer "${stageLabel(from)}") — retry the transition`,
+      };
+    }
+
+    const payload = {
+      fromStage: from,
+      toStage: to,
+      accessionNumber: updated.accessionNumber,
+      modality: updated.modality,
+      procedure: updated.procedure,
+      changedBy,
+    };
+
+    // Audit — immutable record of every transition, atomic with the mutation.
+    await recordAuditInTransaction(tx, {
+      userId: changedBy,
+      action: `workflow.transition`,
+      module: "workflow",
+      entityType: "workflow_study",
+      entityId: studyId,
+      details: payload,
+    });
+
+    // Events — the stage milestone plus an automatic worklist refresh signal.
+    // Both go to the outbox inside this transaction (ADR-010).
+    const stage = stageMeta(to);
+    if (stage) {
+      await recordEventInTransaction(tx, { type: stage.event, aggregate: "study", aggregateId: studyId, payload });
+    }
+    await recordEventInTransaction(tx, {
+      type: EVENT_TYPES.WORKLIST_UPDATED,
+      aggregate: "workflow",
+      aggregateId: studyId,
+      payload,
+    });
+
+    // Notifications for clinically significant handoffs — best-effort, never
+    // blocks the transition.
+    try {
+      if (to === "assigned") {
+        const radioId = (opts.radiologistId ?? study.radiologistId) ?? "all";
+        await tx.insert(notifications).values({
+          userId: radioId,
+          title: "Study assigned to you",
+          body: `${updated.procedure} (${updated.modality}) — ${updated.accessionNumber ?? ""} is ready for review`,
+          type: "info",
+          severity: "normal",
+          link: `/workstation?studyId=${studyId}`,
+        });
+      }
+      if (to === "released") {
+        await tx.insert(notifications).values({
+          userId: "all",
+          title: "Report released",
+          body: `Report released for ${updated.procedure} (${updated.accessionNumber ?? ""})`,
+          type: "success",
+          severity: "normal",
+          link: `/workstation?studyId=${studyId}`,
+        });
+      }
+    } catch {
+      /* notification failure never blocks the transition */
+    }
+
+    return { ok: true, study: updated, fromStage: from, toStage: to, transitioned: true };
+  });
 }
 
 /** Count studies per pipeline stage (for boards and dashboards). */

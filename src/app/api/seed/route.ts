@@ -91,6 +91,8 @@ export async function POST(request: NextRequest) {
         { firstName: "Lorato", lastName: "Sebina", role: "radiographer", specialization: "MRI", email: "lorato.sebina@gerald.co.bw", phone: "+267 72 100 105" },
         { firstName: "Omphemetse", lastName: "Moilwa", role: "radiographer", specialization: "X-Ray", email: "omphemetse.moilwa@gerald.co.bw", phone: "+267 72 100 106" },
         { firstName: "Refilwe", lastName: "Mosinyi", role: "receptionist", email: "refilwe.mosinyi@gerald.co.bw", phone: "+267 71 100 107" },
+        { firstName: "Gerald", lastName: "M", role: "radiologist", specialization: "General Radiology", email: "gerald.m@gerald.co.bw", phone: "+267 71 100 108" },
+        { firstName: "Gosego", lastName: "H", role: "administrator", specialization: "Administration", email: "gosego.h@gerald.co.bw", phone: "+267 71 100 109" },
       ])
       .returning();
 
@@ -369,6 +371,8 @@ export async function POST(request: NextRequest) {
         { name: "Gaborone Imaging Centre", code: "BR-GAB", address: "Plot 6450, Prime Plaza, Gaborone", phone: "+267 390 5550", email: "gaborone@gerald.co.bw", managerName: "Dr Thato Ramotswe", status: "active" },
         { name: "Francistown Imaging Centre", code: "BR-FRA", address: "Blue Jacket Street, Francistown", phone: "+267 241 5550", email: "francistown@gerald.co.bw", managerName: "Dr Kagiso Moeng", status: "active" },
         { name: "Maun Imaging Centre", code: "BR-MAU", address: "Mogapinyana Ward, Maun", phone: "+267 686 5550", email: "maun@gerald.co.bw", managerName: "Dr Boitumelo Seretse", status: "active" },
+        { name: "KB Mall Branch", code: "BR-KBM", address: "Plot 1234, Kgosi Bedi Mall, Gaborone", phone: "+267 390 5560", email: "kbmall@gerald.co.bw", managerName: "Gerald M", status: "active" },
+        { name: "Hillview Branch", code: "BR-HLV", address: "Hillview Shopping Complex, Mogoditshane", phone: "+267 390 5570", email: "hillview@gerald.co.bw", managerName: "Gosego H", status: "active" },
       ])
       .returning();
 
@@ -381,6 +385,8 @@ export async function POST(request: NextRequest) {
       { staffId: staffData[4].id, employeeNumber: generateEmployeeNumber(), department: "Imaging Operations", employmentType: "full_time", branchId: branchData[0].id, startDate: "2021-08-15", monthlySalary: "17200.00", status: "active" },
       { staffId: staffData[5].id, employeeNumber: generateEmployeeNumber(), department: "Imaging Operations", employmentType: "part_time", branchId: branchData[1].id, startDate: "2023-04-01", hourlyRate: "105.00", status: "active" },
       { staffId: staffData[6].id, employeeNumber: generateEmployeeNumber(), department: "Front Office", employmentType: "full_time", branchId: branchData[0].id, startDate: "2022-09-01", monthlySalary: "9800.00", status: "active" },
+      { staffId: staffData[7].id, employeeNumber: generateEmployeeNumber(), department: "Radiology", employmentType: "full_time", branchId: branchData[3].id, startDate: "2023-01-15", monthlySalary: "55000.00", status: "active" },
+      { staffId: staffData[8].id, employeeNumber: generateEmployeeNumber(), department: "Administration", employmentType: "full_time", branchId: branchData[4].id, startDate: "2023-06-01", monthlySalary: "22000.00", status: "active" },
     ]);
 
     // ─── ADMINISTRATION: Roles ───
@@ -430,23 +436,65 @@ async function fetchOrthancStudies(): Promise<OrthancStudyLite[]> {
     const user = integrationConfig.orthanc.username || "orthanc";
     const pass = integrationConfig.orthanc.password || "orthanc";
     const auth = "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
-    const res = await fetch(`${base}/dicom-web/studies`, {
-      headers: { Authorization: auth, Accept: "application/dicom+json" },
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) return [];
-    const list = (await res.json()) as Record<string, { Value?: (string | { Alphabetic?: string })[] }>[];
-    return list.map((study) => {
-      const asString = (v: string | { Alphabetic?: string } | undefined): string =>
-        typeof v === "string" ? v : (v as { Alphabetic?: string } | undefined)?.Alphabetic ?? "";
-      const patientName = asString(study["00100010"]?.Value?.[0]) || null;
-      return {
-        studyInstanceUid: asString(study["0020000D"]?.Value?.[0]),
-        // ModalitiesInStudy (0008,0061); fall back to Modality (0008,0060).
-        modalities: asString(study["00080061"]?.Value?.[0]) || asString(study["00080060"]?.Value?.[0]),
-        patientName,
-      };
-    }).filter((s) => s.studyInstanceUid);
+    const headers = { Authorization: auth };
+    const signal = AbortSignal.timeout(5000);
+
+    // Try DICOMweb QIDO-RS first (preferred).
+    try {
+      const res = await fetch(`${base}/dicom-web/studies`, {
+        headers: { ...headers, Accept: "application/dicom+json" },
+        signal,
+      });
+      if (res.ok) {
+        const list = (await res.json()) as Record<string, { Value?: (string | { Alphabetic?: string })[] }>[];
+        const studies = list.map((study) => {
+          const asString = (v: string | { Alphabetic?: string } | undefined): string =>
+            typeof v === "string" ? v : (v as { Alphabetic?: string } | undefined)?.Alphabetic ?? "";
+          const patientName = asString(study["00100010"]?.Value?.[0]) || null;
+          return {
+            studyInstanceUid: asString(study["0020000D"]?.Value?.[0]),
+            modalities: asString(study["00080061"]?.Value?.[0]) || asString(study["00080060"]?.Value?.[0]),
+            patientName,
+          };
+        }).filter((s) => s.studyInstanceUid);
+        if (studies.length > 0) return studies;
+      }
+    } catch { /* fall through to REST API */ }
+
+    // Fallback: Orthanc native REST API — list studies, then fetch each.
+    const listRes = await fetch(`${base}/studies`, { headers, signal });
+    if (!listRes.ok) return [];
+    const studyIds = (await listRes.json()) as string[];
+    if (!Array.isArray(studyIds) || studyIds.length === 0) return [];
+
+    const results: OrthancStudyLite[] = [];
+    for (const id of studyIds) {
+      try {
+        const detailRes = await fetch(`${base}/studies/${id}`, { headers, signal });
+        if (!detailRes.ok) continue;
+        const detail = await detailRes.json() as Record<string, unknown>;
+        const mainTags = (detail.MainDicomTags ?? {}) as Record<string, string>;
+        const patTags = (detail.PatientMainDicomTags ?? {}) as Record<string, string>;
+        // Orthanc REST does not expose ModalitiesInStudy in MainDicomTags.
+        // Fetch the first series to get the modality.
+        const seriesIds = (detail.Series ?? []) as string[];
+        let modalities = "";
+        if (seriesIds.length > 0) {
+          const serRes = await fetch(`${base}/series/${seriesIds[0]}`, { headers, signal });
+          if (serRes.ok) {
+            const serDetail = await serRes.json() as Record<string, unknown>;
+            const serTags = (serDetail.MainDicomTags ?? {}) as Record<string, string>;
+            modalities = serTags.Modality ?? "";
+          }
+        }
+        results.push({
+          studyInstanceUid: mainTags.StudyInstanceUID ?? id,
+          modalities,
+          patientName: patTags.PatientName ?? null,
+        });
+      } catch { /* skip unresolvable studies */ }
+    }
+    return results;
   } catch {
     return [];
   }

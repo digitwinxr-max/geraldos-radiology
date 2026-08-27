@@ -1,0 +1,1 @@
+Authentication requires Keycloak to be configured before `/api/auth/login` will redirect to the OIDC provider; if not configured, users are redirected to `/login?error=keycloak_not_configured`. The app uses `dynamic = "force-dynamic"` on auth routes to ensure runtime evaluation.

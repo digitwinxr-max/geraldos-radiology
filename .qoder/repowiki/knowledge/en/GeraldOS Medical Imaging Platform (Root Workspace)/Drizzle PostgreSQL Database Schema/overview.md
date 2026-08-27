@@ -1,0 +1,1 @@
+Initial Drizzle migration defining the full PostgreSQL schema for a radiology imaging platform, covering patients, workflow, billing, inventory, and AI-assisted reporting domains.

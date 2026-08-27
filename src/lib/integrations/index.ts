@@ -12,11 +12,23 @@
 export const integrationConfig = {
   keycloak: {
     url: process.env.KEYCLOAK_URL ?? "",
+    /**
+     * Browser-facing base URL for front-channel redirects (login). Required
+     * only when Keycloak is reached under a different host from the browser
+     * than from the server (e.g. http://keycloak:8080 inside compose but
+     * http://localhost:8180 in the user's browser).
+     */
+    publicUrl: process.env.KEYCLOAK_PUBLIC_URL ?? "",
     realm: process.env.KEYCLOAK_REALM ?? "geraldos",
     clientId: process.env.KEYCLOAK_CLIENT_ID ?? "geraldos-frontend",
     clientSecret: process.env.KEYCLOAK_CLIENT_SECRET ?? "",
     get issuer() {
       return this.url ? `${this.url.replace(/\/$/, "")}/realms/${this.realm}` : "";
+    },
+    /** Issuer as the browser sees it — used for the authorization redirect. */
+    get publicIssuer() {
+      const base = this.publicUrl || this.url;
+      return base ? `${base.replace(/\/$/, "")}/realms/${this.realm}` : "";
     },
   },
   orthanc: {
@@ -26,6 +38,11 @@ export const integrationConfig = {
   },
   ohif: {
     url: process.env.OHIF_URL ?? "",
+    /** Browser-facing base for the embedded viewer iframe (see .env.example). */
+    publicUrl: process.env.OHIF_PUBLIC_URL ?? "",
+    get browserUrl() {
+      return this.publicUrl || this.url;
+    },
   },
   dicoogle: {
     url: process.env.DICOOGLE_URL ?? "",
@@ -37,6 +54,7 @@ export const integrationConfig = {
     url: process.env.N8N_URL ?? "",
     apiKey: process.env.N8N_API_KEY ?? "",
     webhookBase: process.env.N8N_WEBHOOK_BASE ?? "",
+    webhookSecret: process.env.N8N_WEBHOOK_SECRET ?? "",
   },
   langgraph: {
     url: process.env.LANGGRAPH_URL ?? "",
@@ -61,7 +79,7 @@ export function publicClientConfig() {
   return {
     keycloakEnabled: kcConfigured,
     keycloakRealm: integrationConfig.keycloak.realm,
-    ohifUrl: integrationConfig.ohif.url,
+    ohifUrl: integrationConfig.ohif.browserUrl,
     orthancUrl: integrationConfig.orthanc.url || null,
     orthancProxyBase: "/api/orthanc/proxy",
     langgraphEnabled: Boolean(integrationConfig.langgraph.url),

@@ -1,0 +1,6 @@
+- Each domain endpoint is declared directly in `app/main.py` under a numbered MODULE comment block, grouping related routes together rather than splitting into separate routers.
+- Database writes wrap `db.execute(sqlalchemy.text(...))` in try/except blocks that call `db.commit()` on success and `db.rollback()` plus `HTTPException(400)` on failure.
+- Read queries use `db.execute(sqlalchemy.text(query)).mappings().all()` and convert rows to plain dicts before returning them as JSON responses.
+- New entity IDs are generated with `str(uuid.uuid4())` at the start of every POST handler.
+- External service URLs are read exclusively from `app.core.config.settings` (Pydantic Settings) so no hostnames are hard-coded in route handlers.
+- LangGraph agents follow a uniform signature: receive an `AgentState` TypedDict, append a log line to `state['logs']`, mutate `extracted_entities` / `routing_destination` / `response`, and return a dict compatible with the shared state schema.

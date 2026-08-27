@@ -25,6 +25,10 @@ export async function discoverOidc(): Promise<OidcDiscovery> {
   });
   if (!res.ok) throw new Error(`OIDC discovery failed: HTTP ${res.status}`);
   const config = (await res.json()) as OidcDiscovery;
+  // Trust the issuer the provider reports about itself — when Keycloak is
+  // reached internally but published under a public hostname (KC_HOSTNAME),
+  // token `iss` claims match this value, not our constructed backchannel URL.
+  config.issuer = config.issuer || integrationConfig.keycloak.issuer;
   discoveryCache = { issuer, config };
   return config;
 }
@@ -42,7 +46,15 @@ export function buildAuthorizationUrl(
     redirect_uri: redirectUri,
     state,
   });
-  return `${oidc.authorization_endpoint}?${params.toString()}`;
+  // The browser must be redirected to a host it can actually reach. Prefer
+  // the endpoint derived from KEYCLOAK_PUBLIC_URL; fall back to what the
+  // provider advertised (correct when KC_HOSTNAME is publicly resolvable).
+  let authorizationEndpoint = oidc.authorization_endpoint;
+  const publicIssuer = cfg.publicIssuer;
+  if (cfg.publicUrl && publicIssuer) {
+    authorizationEndpoint = `${publicIssuer}/protocol/openid-connect/auth`;
+  }
+  return `${authorizationEndpoint}?${params.toString()}`;
 }
 
 export async function exchangeCodeForTokens(
@@ -81,10 +93,28 @@ export interface KeycloakClaims {
 export async function verifyIdToken(oidc: OidcDiscovery, idToken: string): Promise<KeycloakClaims> {
   const jwks = createRemoteJWKSet(new URL(oidc.jwks_uri));
   const { payload } = await jwtVerify(idToken, jwks, {
-    issuer: integrationConfig.keycloak.issuer,
+    // Validate against the issuer the provider itself declares — tokens carry
+    // this value in `iss`, which may differ from our backchannel base URL.
+    issuer: oidc.issuer,
     audience: integrationConfig.keycloak.clientId,
   });
   return payload as KeycloakClaims;
+}
+
+/**
+ * Extract realm/client roles from the verified ACCESS token.
+ *
+ * Modern Keycloak versions issue ID tokens WITHOUT `realm_access`; realm and
+ * client roles live on the access token. Signature and issuer are fully
+ * verified — only the `aud` check differs, because access tokens target the
+ * `account` audience rather than our client id.
+ */
+export async function verifyAccessTokenRoles(oidc: OidcDiscovery, accessToken: string): Promise<string[]> {
+  const jwks = createRemoteJWKSet(new URL(oidc.jwks_uri));
+  const { payload } = await jwtVerify(accessToken, jwks, {
+    issuer: oidc.issuer,
+  });
+  return extractRoles(payload as KeycloakClaims);
 }
 
 export function extractRoles(claims: KeycloakClaims): string[] {

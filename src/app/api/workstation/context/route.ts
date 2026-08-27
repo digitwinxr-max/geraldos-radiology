@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { patients, referrals, reports, workflowStudies, knowledgeDocuments, aiObservations } from "@/db/schema";
 import { eq, desc, ilike, and, sql } from "drizzle-orm";
 import { integrationConfig, orthancAuthHeader, timedFetch } from "@/lib/integrations";
+import { withAuth } from "@/lib/middleware-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,10 @@ interface OrthancStudyResource {
  * Every source degrades gracefully when not configured.
  */
 export async function GET(request: NextRequest) {
+  return withAuth(request, "workflow.read", () => contextHandler(request));
+}
+
+async function contextHandler(request: NextRequest) {
   const orthancStudyId = request.nextUrl.searchParams.get("orthancStudyId");
   const studyId = request.nextUrl.searchParams.get("studyId");
   const patientIdParam = request.nextUrl.searchParams.get("patientId");

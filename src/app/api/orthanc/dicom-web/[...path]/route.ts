@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { integrationConfig, orthancAuthHeader } from "@/lib/integrations";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,11 +13,23 @@ export const runtime = "nodejs";
  * the server. Supports QIDO-RS (GET studies/series/instances), WADO-RS (GET
  * instances/frames, multipart/related) and STOW-RS (POST/upload).
  *
- * Exempt from withAuth — the global proxy middleware handles session validation,
- * and this route returns raw binary/multipart responses incompatible with the
- * structured error wrapper.
+ * Exempt from withAuth (raw binary/multipart responses are incompatible with
+ * the structured error wrapper), but the session cookie is verified explicitly
+ * here so imaging data is never served without an authenticated user.
  */
-async function proxy(request: NextRequest, segments: string[]) {
+function unauthorized(): Response {
+  return new Response(
+    JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Authentication required" } }),
+    { status: 401, headers: { "content-type": "application/json" } },
+  );
+}
+
+async function proxy(request: NextRequest, segments: string[]): Promise<Response> {
+  // Explicit session gate — independent of the edge proxy's configuration mode.
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const user = token ? await verifySessionToken(token) : null;
+  if (!user) return unauthorized();
+
   const { url } = integrationConfig.orthanc;
   if (!url) {
     return new Response(JSON.stringify({ error: { code: "NOT_CONFIGURED", message: "Orthanc is not configured (ORTHANC_URL)" } }), {
@@ -63,7 +76,6 @@ async function proxy(request: NextRequest, segments: string[]) {
       status: res.status,
       headers: {
         "content-type": res.headers.get("content-type") ?? "application/json",
-        "access-control-allow-origin": "*",
       },
     });
   } catch {
@@ -92,16 +104,4 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   return proxy(request, path ?? []);
-}
-
-export async function OPTIONS(_request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
-  await params;
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "access-control-allow-headers": "content-type, accept, authorization",
-    },
-  });
 }

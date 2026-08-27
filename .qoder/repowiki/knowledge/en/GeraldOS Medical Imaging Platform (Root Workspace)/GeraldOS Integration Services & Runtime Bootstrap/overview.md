@@ -1,0 +1,1 @@
+Bootstraps and runs GeraldOS's integrated backend services (Redis, Orthanc, MinIO, Keycloak, HAPI FHIR, Dicoogle, n8n, OHIF, LangGraph) via in-memory Node.js mocks and a shared startup script.

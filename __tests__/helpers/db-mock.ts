@@ -51,6 +51,11 @@ export interface DbMock {
     update: (...args: unknown[]) => Chain;
     delete: (...args: unknown[]) => Chain;
     execute: (...args: unknown[]) => Promise<{ rows: unknown[] }>;
+    /**
+     * Invoke the callback with a transaction handle whose builders consume
+     * from the SAME scripted FIFO queue, mirroring execution order.
+     */
+    transaction: (fn: (tx: Record<string, unknown>) => Promise<unknown>) => Promise<unknown>;
   };
   /** Queue the value the next awaited builder (or `execute`) resolves to. */
   result: (value: unknown) => void;
@@ -107,6 +112,20 @@ export function createDbMock(): DbMock {
       execute: async (...args: unknown[]) => {
         log({ method: "execute", args });
         return { rows: consume() as unknown[] };
+      },
+      transaction: async (fn: (tx: Record<string, unknown>) => Promise<unknown>) => {
+        log({ method: "transaction", args: [] });
+        const tx = {
+          select: start("tx.select"),
+          insert: start("tx.insert"),
+          update: start("tx.update"),
+          delete: start("tx.delete"),
+          execute: async (...args: unknown[]) => {
+            log({ method: "tx.execute", args });
+            return { rows: consume() as unknown[] };
+          },
+        };
+        return fn(tx);
       },
     },
     result: (value: unknown) => {

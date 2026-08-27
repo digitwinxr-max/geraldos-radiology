@@ -1,0 +1,1 @@
+Run via `uvicorn app.main:app --host 0.127.0.0 --port 8000` or build the container with `docker build -t geraldos-backend .`; requires a `.env` file (or environment variables) supplying `DATABASE_URL`, `REDIS_URL`, `MINIO_*`, `KEYCLOAK_*`, `ORTHANC_URL`, `FHIR_URL`, and optionally `GEMINI_API_KEY`.

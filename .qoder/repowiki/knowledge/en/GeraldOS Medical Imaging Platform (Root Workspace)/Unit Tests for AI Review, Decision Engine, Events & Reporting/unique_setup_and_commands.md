@@ -1,0 +1,1 @@
+Run with the repository's Vitest configuration (no per-test bootstrap scripts); tests rely on mocked `@/db`, `ioredis`, and integrations rather than real infrastructure.

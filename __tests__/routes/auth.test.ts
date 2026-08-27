@@ -11,6 +11,7 @@ vi.mock("@/lib/auth/oidc", () => ({
   discoverOidc: vi.fn(),
   exchangeCodeForTokens: vi.fn(),
   verifyIdToken: vi.fn(),
+  verifyAccessTokenRoles: vi.fn(),
   extractRoles: vi.fn(),
 }));
 vi.mock("@/lib/audit", () => ({
@@ -25,6 +26,7 @@ import {
   exchangeCodeForTokens,
   extractRoles,
   keycloakConfigured,
+  verifyAccessTokenRoles,
   verifyIdToken,
 } from "@/lib/auth/oidc";
 import { GET as devGet } from "@/app/api/auth/dev/route";
@@ -127,13 +129,18 @@ describe("GET /api/auth/callback", () => {
   it("exchanges the code, sets the session cookie and deletes the state cookie", async () => {
     const oidc = { token_endpoint: "https://kc/token" };
     vi.mocked(discoverOidc).mockResolvedValue(oidc as never);
-    vi.mocked(exchangeCodeForTokens).mockResolvedValue({ id_token: "id-token" } as never);
+    vi.mocked(exchangeCodeForTokens).mockResolvedValue({
+      id_token: "id-token",
+      access_token: "access-token",
+    } as never);
+    // Real-world Keycloak: realm roles ride ONLY on the access token.
     vi.mocked(verifyIdToken).mockResolvedValue({
       sub: "kc-1",
       name: "Keycloak User",
       email: "user@gerald.co.za",
     } as never);
-    vi.mocked(extractRoles).mockReturnValue(["radiologist"]);
+    vi.mocked(extractRoles).mockReturnValue([]);
+    vi.mocked(verifyAccessTokenRoles).mockResolvedValue(["radiologist"]);
 
     const res = await callbackGet(
       callbackRequest("?code=auth-code&state=abc", "geraldos_oauth_state=abc"),
@@ -149,6 +156,8 @@ describe("GET /api/auth/callback", () => {
     expect(createSessionToken).toHaveBeenCalledWith(
       expect.objectContaining({ sub: "kc-1", roles: ["radiologist"], iss: "keycloak" }),
     );
+    // Roles must be sourced from the verified ACCESS token, not just the ID token.
+    expect(verifyAccessTokenRoles).toHaveBeenCalledWith(oidc, "access-token");
 
     const cookies = cookiesOf(res);
     expect(cookies.join(";")).toContain("geraldos_session=session-token-123");

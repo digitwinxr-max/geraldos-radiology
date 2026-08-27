@@ -1,0 +1,6 @@
+- Each API domain is a folder under `src/app/api/<domain>/route.ts` (with optional `[id]/route.ts` for single-resource CRUD), keeping one HTTP endpoint per file.
+- Database entities are defined as Drizzle `pgTable` declarations in `src/db/schema.ts` using UUID primary keys, snake_case column names, and explicit `createdAt`/`updatedAt` timestamps.
+- Domain business logic is isolated in `src/lib/*.ts` modules that import from `@/db` and `@/db/schema`, never from React components or API routes directly.
+- The nine operational agents are declared as structured `AgentDefinition` objects in `src/lib/agents.ts` with id/name/mission/tools/memory/events/responsibilities/color fields, then dispatched via a switch on agentId.
+- Client providers are composed in `src/components/providers.tsx` and injected at the root layout, centralizing React Query configuration (staleTime, refetchOnWindowFocus).
+- All mutable state changes from agents funnel through the decision engine rather than executing directly, enforcing a proposed → validated → approved → executed lifecycle recorded in `ai_recommendations`.

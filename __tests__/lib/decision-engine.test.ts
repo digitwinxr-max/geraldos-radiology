@@ -1,51 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock database
-vi.mock("@/db", () => ({
-  db: {
-    insert: vi.fn().mockReturnValue({
-      // Mirror the real engine: the computed status is set on the inserted row,
-      // and `returning()` resolves it back to the caller.
-      values: vi.fn().mockImplementation((values) => ({
-        returning: vi.fn().mockResolvedValue([{ id: "test-id", ...values }]),
-      })),
-    }),
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{
-            id: "test-id",
-            status: "approved",
-            targetModule: "workflow",
-            targetAction: "advance_stage",
-            targetPayload: {},
-          }]),
-        }),
-      }),
-    }),
-    update: vi.fn().mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([{
-            id: "test-id",
-            status: "executed",
-          }]),
-        }),
-      }),
-    }),
-  },
-}));
+vi.mock("@/db", async () => {
+  const { dbMock } = await import("../helpers/db-mock");
+  return { db: dbMock.db };
+});
 
 // Mock audit
 vi.mock("@/lib/audit", () => ({
   recordAudit: vi.fn().mockResolvedValue(undefined),
+  recordAuditInTransaction: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock events
 vi.mock("@/lib/events", () => ({
   publishEvent: vi.fn().mockResolvedValue(undefined),
+  recordEventInTransaction: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { dbMock } from "../helpers/db-mock";
 import {
   evaluateRules,
   proposeDecision,
@@ -54,6 +26,11 @@ import {
   executeDecision,
   DECISION_STATUS,
 } from "@/lib/decision-engine";
+
+beforeEach(() => {
+  dbMock.reset();
+  vi.clearAllMocks();
+});
 
 describe("Decision Engine", () => {
   describe("evaluateRules", () => {
@@ -126,7 +103,9 @@ describe("Decision Engine", () => {
   });
 
   describe("proposeDecision", () => {
-    it("should propose a validated decision", async () => {
+    it("should propose a validated decision atomically (tx + audit + event)", async () => {
+      dbMock.result([{ id: "test-id", status: "validated", agent: "workflow-agent" }]);
+
       const decision = await proposeDecision({
         agent: "workflow-agent",
         recommendation: "Advance study to imaging",
@@ -135,9 +114,14 @@ describe("Decision Engine", () => {
       });
 
       expect(decision.status).toBe("validated");
+      // One transaction wraps the insert; audit + event ride along (ADR-010).
+      expect(dbMock.callsFor("transaction")).toHaveLength(1);
+      expect(dbMock.callsFor("tx.insert")).toHaveLength(1);
     });
 
     it("should propose with proposed status when rules fail", async () => {
+      dbMock.result([{ id: "test-id", status: "proposed", agent: "reporting-agent" }]);
+
       const decision = await proposeDecision({
         agent: "reporting-agent",
         recommendation: "Sign report",

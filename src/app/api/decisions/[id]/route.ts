@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { approveDecision, rejectDecision, executeDecision } from "@/lib/decision-engine";
 import { withAuth } from "@/lib/middleware-helpers";
 import { validateBody, decisionActionSchema } from "@/lib/validation";
-import { apiError, notFound, internalError } from "@/lib/api-error";
+import { notFound, internalError } from "@/lib/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -15,29 +15,27 @@ export const dynamic = "force-dynamic";
  *            whitelisted action map and audits the outcome.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(request, "ai-review.write", async () => {
+  return withAuth(request, "ai-review.write", async (user) => {
     const { id } = await params;
     const v = await validateBody(request, decisionActionSchema);
     if (!v.success) return v.error;
 
+    // Human approval identity comes from the verified session — a request body
+    // value can never impersonate the approver in the safety audit trail.
+    const actor = user.name || user.sub;
+
     try {
       switch (v.data.action) {
         case "approve": {
-          if (!v.data.approvedBy) {
-            return apiError("VALIDATION_FAILED", "approvedBy is required for approve action", 400);
-          }
-          const decision = await approveDecision(id, v.data.approvedBy);
+          const decision = await approveDecision(id, actor);
           return NextResponse.json({ ok: true, decision });
         }
         case "reject": {
-          if (!v.data.approvedBy) {
-            return apiError("VALIDATION_FAILED", "approvedBy is required for reject action", 400);
-          }
-          const decision = await rejectDecision(id, v.data.approvedBy, v.data.reason ?? undefined);
+          const decision = await rejectDecision(id, actor, v.data.reason ?? undefined);
           return NextResponse.json({ ok: true, decision });
         }
         case "execute": {
-          const decision = await executeDecision(id, v.data.approvedBy ?? "system");
+          const decision = await executeDecision(id, actor);
           return NextResponse.json({ ok: true, decision });
         }
       }

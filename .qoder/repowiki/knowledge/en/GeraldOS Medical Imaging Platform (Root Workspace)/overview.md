@@ -1,0 +1,1 @@
+Top-level workspace that wires a Next.js frontend, FastAPI multi-agent backend, shared PostgreSQL schema, and an approved-stack Docker compose of PACS/FHIR/Keycloak services into one runnable GeraldOS platform.

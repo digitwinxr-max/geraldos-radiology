@@ -4,7 +4,7 @@ import path from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   test: {
@@ -12,6 +12,7 @@ export default defineConfig({
     include: ["__tests__/**/*.test.ts"],
     // pg (node-postgres) is server-only; mock @/db in tests that touch the bus.
     testTimeout: 10_000,
+    fileParallelism: false,
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

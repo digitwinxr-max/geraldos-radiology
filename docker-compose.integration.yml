@@ -1,0 +1,78 @@
+# GeraldOS — Integration test stack.
+#
+# Fixed ports and throwaway credentials for the vitest integration suite
+# (`npm run test:integration`). Isolated from docker-compose.yml on purpose:
+# different network name, container names and ports so a developer can run the
+# unit pipeline and the integration stack side by side.
+#
+#   docker compose -f docker-compose.integration.yml up -d
+#   npm run db:push && npm run build && npm run test:integration
+
+name: geraldos-integration
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: geraldos-it-postgres
+    environment:
+      POSTGRES_USER: geraldos_admin
+      POSTGRES_PASSWORD: it_secure_pass
+      POSTGRES_DB: geraldos
+    ports: ["55432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geraldos_admin -d geraldos"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: geraldos-it-redis
+    ports: ["56379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  orthanc:
+    image: orthancteam/orthanc:latest
+    container_name: geraldos-it-orthanc
+    environment:
+      ORTHANC__NAME: GeraldOS-IT-PACS
+      ORTHANC__DICOM_WEB__ENABLE: "true"
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: |-
+        {"orthanc": "it_orthanc_pass"}
+      # Used by the healthcheck below; keep in sync with REGISTERED_USERS.
+      IT_ORTHANC_USER: orthanc
+      IT_ORTHANC_PASS: it_orthanc_pass
+    ports: ["58042:8042"]
+    healthcheck:
+      # NOTE: /bin/sh here is dash — /dev/tcp (bash-only) silently never works.
+      # python3 ships with orthancteam/orthanc; use it for a real HTTP probe.
+      test: ["CMD-SHELL", "python3 -c \"import os,urllib.request,base64; r=urllib.request.Request('http://127.0.0.1:8042/system'); r.add_header('Authorization','Basic '+base64.b64encode(os.environ['IT_ORTHANC_USER'].encode()+b':'+os.environ['IT_ORTHANC_PASS'].encode()).decode()); urllib.request.urlopen(r, timeout=3)\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: geraldos-it-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_HOSTNAME: localhost
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      # Realm + client + users bootstrap (mounted from ./docker/keycloak).
+      - ./docker/keycloak/geraldos-realm.json:/opt/keycloak/data/import/geraldos-realm.json:ro
+    ports: ["58080:8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200\\|UP' || exit 1"]
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 60s

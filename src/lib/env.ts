@@ -17,30 +17,37 @@ function isProduction(): boolean {
  * insecure dev default.
  */
 function resolveEnv(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback ?? "";
+  const raw = process.env[name];
+  // An explicitly blank variable ("") is treated as unset so deployments that
+  // blank out a value still receive the documented fallback instead of
+  // silently disabling security defaults.
+  const isBlank = raw === undefined || raw === "";
 
   if (isProduction()) {
-    if (!value) {
+    // In production the dev fallback must never silently apply — a blank or
+    // missing required variable is always fatal.
+    if (isBlank) {
       throw new Error(
         `[GeraldOS] Missing required environment variable ${name}. ` +
           "Set it in your production environment before starting the server."
       );
     }
-    if (name === "AUTH_SECRET" && value === DEV_SECRET) {
+    if (name === "AUTH_SECRET" && raw === DEV_SECRET) {
       throw new Error(
         `[GeraldOS] AUTH_SECRET is set to the known development default. ` +
           "Generate a secure random secret (≥32 bytes) for production."
       );
     }
+    return raw;
   }
 
-  if (!value && !isProduction()) {
+  const value = !isBlank ? raw : (fallback ?? "");
+  if (!value) {
     console.warn(
-      `[GeraldOS] ${name} is not set — using ${fallback ? "fallback" : "empty string"}. ` +
+      `[GeraldOS] ${name} is not set — using empty string. ` +
         "This is acceptable in development only."
     );
   }
-
   return value;
 }
 

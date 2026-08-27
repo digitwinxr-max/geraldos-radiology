@@ -21,7 +21,6 @@ import {
   listReportVersions,
   listReports,
   saveReportVersion,
-  signReport,
 } from "@/services/reports-service";
 
 beforeEach(() => {
@@ -89,38 +88,6 @@ describe("reports service", () => {
     await expect(getReport("missing")).resolves.toBeNull();
   });
 
-  describe("signReport", () => {
-    it("signs the report, audits with the signer, and publishes report.signed", async () => {
-      dbMock.result([{ id: "r-1", status: "signed" }]);
-
-      const row = await signReport("r-1", "dr-naidoo");
-
-      expect(row).toMatchObject({ status: "signed" });
-      expect(recordAudit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: "dr-naidoo",
-          action: "report.signed",
-          entityId: "r-1",
-        }),
-      );
-      expect(publishEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: EVENT_TYPES.REPORT_SIGNED,
-          aggregateId: "r-1",
-          payload: { signedBy: "dr-naidoo" },
-        }),
-      );
-    });
-
-    it("returns null without side effects when the report is missing", async () => {
-      dbMock.result([]);
-
-      await expect(signReport("missing", "dr-naidoo")).resolves.toBeNull();
-      expect(recordAudit).not.toHaveBeenCalled();
-      expect(publishEvent).not.toHaveBeenCalled();
-    });
-  });
-
   describe("saveReportVersion", () => {
     const reportRow = {
       id: "r-1",
@@ -154,6 +121,8 @@ describe("reports service", () => {
           impression: "Normal",
           recommendation: null,
           status: "draft",
+          qualityScore: null,
+          aiAssisted: false,
           changedBy: "user-1",
         },
       ]);

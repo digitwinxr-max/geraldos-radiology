@@ -249,7 +249,8 @@ export const createAiReviewSchema = z.object({
 
 export const reviewObservationSchema = z.object({
   status: z.enum(["accepted", "rejected"]),
-  reviewedBy: z.string().min(1).max(200),
+  // Deprecated: reviewers are attributed from the authenticated session.
+  reviewedBy: z.string().min(1).max(200).optional(),
 });
 
 // ─── Decision action schema ───

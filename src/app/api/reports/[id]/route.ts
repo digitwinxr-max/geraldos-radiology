@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { reports, reportVersions, patients, staff } from "@/db/schema";
+import { reports, patients, staff } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { recordAudit } from "@/lib/audit";
 import { publishEvent } from "@/lib/events";
+import { saveReportVersion } from "@/services/reports-service";
 import { withAuth } from "@/lib/middleware-helpers";
 import { notFound, internalError, apiError } from "@/lib/api-error";
 
@@ -58,6 +59,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json().catch(() => null);
     if (!body) return apiError("VALIDATION_FAILED", "Request body is required", 400);
 
+    // Attribution comes from the verified session — never the request body.
+    const actor = user.name || user.sub;
+
     try {
       const [existing] = await db.select().from(reports).where(eq(reports.id, id));
       if (!existing) return notFound("report");
@@ -67,9 +71,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         return apiError("VALIDATION_FAILED", "Reports can only be signed with explicit radiologist confirmation (approvedBy)", 400);
       }
       // Guard: only radiologists sign (RBAC-checked via session roles).
+      // Fail closed: a session without any role can never finalise a report.
       if (body.status === "signed") {
-        const roles = user.roles ?? [];
-        const isRadiologist = roles.some((r: string) => /radiolog/i.test(r)) || roles.length === 0;
+        const isRadiologist = (user.roles ?? []).some((r: string) => /radiolog/i.test(r));
         if (!isRadiologist) {
           return apiError("FORBIDDEN", "Signing requires the radiologist role", 403);
         }
@@ -77,26 +81,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       const statusChanged = body.status && body.status !== existing.status;
 
-      // Snapshot the current version before mutating.
+      // Snapshot the current version before mutating (canonical service path).
       if (existing.findings || existing.impression || existing.recommendation) {
-        const prev = await db
-          .select({ version: reportVersions.version })
-          .from(reportVersions)
-          .where(eq(reportVersions.reportId, id))
-          .orderBy(reportVersions.version);
-        const nextVersion = (prev.at(-1)?.version ?? 0) + 1;
-        await db.insert(reportVersions).values({
-          reportId: id,
-          version: nextVersion,
-          findings: existing.findings,
-          impression: existing.impression,
-          recommendation: existing.recommendation,
-          status: existing.status,
+        await saveReportVersion(id, body.changedBy ?? actor, {
           qualityScore: body.qualityScore ?? null,
           aiAssisted: body.aiAssisted ?? false,
-          changedBy: body.changedBy ?? "radiologist",
         });
-        await publishEvent({ type: "report.versioned", aggregate: "report", aggregateId: id, payload: { version: nextVersion } });
       }
 
       const updates: Record<string, unknown> = {};
@@ -111,7 +101,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const [updated] = await db.update(reports).set(updates).where(eq(reports.id, id)).returning();
 
       await recordAudit({
-        userId: body.changedBy ?? "radiologist",
+        userId: actor,
         action: statusChanged ? `report.${updated.status}` : "report.updated",
         module: "reporting",
         entityType: "report",

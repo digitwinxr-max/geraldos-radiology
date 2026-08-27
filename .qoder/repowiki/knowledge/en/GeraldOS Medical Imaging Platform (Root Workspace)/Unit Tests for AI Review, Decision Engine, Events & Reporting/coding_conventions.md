@@ -1,0 +1,5 @@
+- Each test file targets a single source module and mirrors its exported surface with nested `describe` blocks named after functions or constants.
+- External side effects (database, Redis, audit logging, integrations) are stubbed at the top of the file using `vi.mock` before any imports of the production module.
+- Assertions verify both functional output and domain invariants such as enum values, score bounds (0–100), required fields presence, and safety constraints like avoiding definitive diagnostic language.
+- Modality-driven behavior is validated by iterating over known modalities (X-Ray, CT, MRI, Ultrasound, Mammography) to ensure consistent handling across all imaging types.
+- Tests assert that critical-safety rules block unsafe actions (auto-signing reports, autonomous diagnosis, STAT outside scheduling/workflow) by checking specific rule names in the returned results.

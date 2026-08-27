@@ -14,30 +14,39 @@ let redisFailedAt = 0;
 
 /**
  * Return a connected Redis client, or null when Redis is not configured or
- * currently unreachable. Failed connection attempts back off for 30 s to
- * avoid reconnect storms.
+ * currently unreachable. Failed connection attempts back off briefly to avoid
+ * reconnect storms, but the client SELF-HEALS: ioredis retries with capped
+ * backoff and a closed client is discarded so the next call rebuilds it.
  */
 export async function getRedis(): Promise<import("ioredis").Redis | null> {
   const { redis } = integrationConfig;
   if (!redis.url) return null;
-  if (redisClient) return redisClient;
-  // Back off for 30s after a failed attempt to avoid reconnect storms.
-  if (redisFailedAt && Date.now() - redisFailedAt < 30_000) return null;
+  if (redisClient && redisClient.status !== "end") return redisClient;
+  // Back off briefly after a failed attempt to avoid reconnect storms.
+  if (redisFailedAt && Date.now() - redisFailedAt < 3_000) return null;
   try {
     const { default: Redis } = await import("ioredis");
-    redisClient = new Redis(redis.url, {
+    redisClient?.disconnect();
+    const created = new Redis(redis.url, {
       connectTimeout: 2000,
       maxRetriesPerRequest: 1,
-      retryStrategy: () => null,
+      // Self-healing reconnect: capped linear backoff instead of giving up.
+      retryStrategy: (times) => Math.min(times * 500, 3000),
       lazyConnect: true,
     });
-    redisClient.on("error", () => {
+    created.on("error", () => {
       redisFailedAt = Date.now();
     });
-    await redisClient.connect();
-    return redisClient;
+    created.on("end", () => {
+      // Connection closed for good — drop the handle so callers recreate it.
+      if (redisClient === created) redisClient = null;
+    });
+    redisClient = created;
+    await created.connect();
+    return created;
   } catch {
     redisFailedAt = Date.now();
+    redisClient?.disconnect();
     redisClient = null;
     return null;
   }

@@ -1,0 +1,1 @@
+FastAPI + Uvicorn ASGI server, SQLAlchemy 2.0 with psycopg2 for PostgreSQL, Pydantic v2 settings, LangGraph 0.0.26 for multi-agent state machines, httpx for async HTTP to Orthanc/FHIR/n8n, python-jose RS256 JWT verification against Keycloak JWKS, MinIO S3-compatible object storage, Redis client.
