@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { employeeRecords } from "@/db/schema";
+import { employeeRecords, staff } from "@/db/schema";
 import { withAuth } from "@/lib/middleware-helpers";
 import { internalError } from "@/lib/api-error";
 import { parseListQuery, serviceOpts, listEnvelope } from "@/lib/list-query";
@@ -26,14 +26,43 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAuth(request, "administration.write", async (user) => {
     const body = await request.json().catch(() => null);
-    if (!body?.staffId) {
-      return NextResponse.json({ error: { code: "VALIDATION_FAILED", message: "staffId is required" } }, { status: 400 });
+    if (!body) {
+      return NextResponse.json({ error: { code: "VALIDATION_FAILED", message: "Request body is required" } }, { status: 400 });
     }
+
     try {
+      // Support two modes:
+      // 1. Link existing staff: { staffId: "...", department, branchId, ... }
+      // 2. Create new staff + employee: { newStaff: { firstName, lastName, role, ... }, department, branchId, ... }
+      let staffId: string = body.staffId;
+
+      if (body.newStaff) {
+        // Create the staff member first
+        const [newStaff] = await db
+          .insert(staff)
+          .values({
+            firstName: body.newStaff.firstName,
+            lastName: body.newStaff.lastName,
+            role: body.newStaff.role,
+            specialization: body.newStaff.specialization ?? null,
+            email: body.newStaff.email ?? null,
+            phone: body.newStaff.phone ?? null,
+          })
+          .returning();
+        staffId = newStaff.id;
+      }
+
+      if (!staffId) {
+        return NextResponse.json(
+          { error: { code: "VALIDATION_FAILED", message: "staffId or newStaff is required" } },
+          { status: 400 },
+        );
+      }
+
       const [row] = await db
         .insert(employeeRecords)
         .values({
-          staffId: body.staffId,
+          staffId,
           employeeNumber: generateEmployeeNumber(),
           department: body.department ?? null,
           employmentType: body.employmentType ?? "full_time",

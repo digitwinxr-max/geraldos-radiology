@@ -90,16 +90,29 @@ export default function AdministrationPage() {
   const handleAddEmployee = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await addEmployee.mutateAsync({
-      staffId: form.get("staffId"),
+    const payload: Record<string, unknown> = {
       department: form.get("department"),
       employmentType: form.get("employmentType"),
       branchId: form.get("branchId") || null,
       startDate: form.get("startDate"),
       monthlySalary: form.get("monthlySalary") || null,
       hourlyRate: form.get("hourlyRate") || null,
-    }).catch(() => {});
+    };
+    if (staffMode === "new") {
+      payload.newStaff = {
+        firstName: form.get("newFirstName"),
+        lastName: form.get("newLastName"),
+        role: form.get("newRole"),
+        specialization: form.get("newSpecialization") || null,
+        email: form.get("newEmail") || null,
+        phone: form.get("newPhone") || null,
+      };
+    } else {
+      payload.staffId = form.get("staffId");
+    }
+    await addEmployee.mutateAsync(payload).catch(() => {});
     setEmployeeDialogOpen(false);
+    setStaffMode("existing");
   };
 
   const handleAddBranch = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -118,6 +131,7 @@ export default function AdministrationPage() {
 
   const employedStaffIds = new Set(employees.map((e) => `${e.staffFirstName ?? ""}${e.staffLastName ?? ""}`));
   const unassignedStaff = staffList.filter((s) => !employedStaffIds.has(`${s.firstName}${s.lastName}`));
+  const [staffMode, setStaffMode] = useState<"existing" | "new">("existing");
 
   return (
     <Shell title="Administration" description="Staff, branches, roles & permissions, and organisational management">
@@ -154,17 +168,84 @@ export default function AdministrationPage() {
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Add Employee Record</DialogTitle>
-                      <DialogDescription>Create an HR record for an existing staff member.</DialogDescription>
+                      <DialogTitle>Add Employee</DialogTitle>
+                      <DialogDescription>Create a new staff member or link an existing one to an employee record.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleAddEmployee} className="space-y-4">
-                      <FormField label="Staff Member" required>
-                        <Select name="staffId" required>
-                          <option value="">Select staff...</option>
-                          {unassignedStaff.map((s) => (
-                            <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
-                          ))}
-                        </Select>
+                      {/* Staff mode toggle */}
+                      <FormField label="Staff Member">
+                        <div className="flex gap-2 mb-2">
+                          <Button
+                            type="button"
+                            variant={staffMode === "existing" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setStaffMode("existing")}
+                          >
+                            Existing Staff
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={staffMode === "new" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setStaffMode("new")}
+                          >
+                            New Staff Member
+                          </Button>
+                        </div>
+                        {staffMode === "existing" ? (
+                          <Select name="staffId" required>
+                            <option value="">Select staff...</option>
+                            {unassignedStaff.length > 0 && (
+                              <optgroup label="Unassigned Staff">
+                                {unassignedStaff.map((s) => (
+                                  <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {employees.length > 0 && (
+                              <optgroup label="Current Employees (already assigned)">
+                                {employees.map((e) => (
+                                  <option key={e.id} value="" disabled>
+                                    {e.staffFirstName} {e.staffLastName} — {e.branchName ?? "No Branch"} ({e.staffRole})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </Select>
+                        ) : (
+                          <div className="space-y-3 rounded-lg border border-dashed border-slate-200 p-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <FormField label="First Name" required>
+                                <Input name="newFirstName" required placeholder="e.g. Thato" />
+                              </FormField>
+                              <FormField label="Last Name" required>
+                                <Input name="newLastName" required placeholder="e.g. Ramotswe" />
+                              </FormField>
+                            </div>
+                            <FormField label="Role" required>
+                              <Select name="newRole" required>
+                                <option value="">Select role...</option>
+                                <option value="radiologist">Radiologist</option>
+                                <option value="radiographer">Radiographer</option>
+                                <option value="receptionist">Receptionist</option>
+                                <option value="administrator">Administrator</option>
+                                <option value="manager">Manager</option>
+                                <option value="finance_officer">Finance Officer</option>
+                              </Select>
+                            </FormField>
+                            <div className="grid grid-cols-2 gap-3">
+                              <FormField label="Specialization">
+                                <Input name="newSpecialization" placeholder="e.g. Neuroradiology" />
+                              </FormField>
+                              <FormField label="Email">
+                                <Input name="newEmail" type="email" placeholder="e.g. thato@gerald.co.bw" />
+                              </FormField>
+                            </div>
+                            <FormField label="Phone">
+                              <Input name="newPhone" placeholder="e.g. +267 71 100 101" />
+                            </FormField>
+                          </div>
+                        )}
                       </FormField>
                       <FormField label="Department">
                         <Input name="department" placeholder="e.g. Radiology" />
