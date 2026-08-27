@@ -28,6 +28,7 @@ const PUBLIC_PREFIXES = [
   "/api/webhooks",
   "/api/integrations/client-config",
   "/api/orthanc/dicom-web",
+  "/api/orthanc/wado-uri",
   "/_next",
   "/favicon.ico",
 ];

@@ -70,6 +70,7 @@ services:
       ORTHANC__NAME: GeraldOS-PACS
       ORTHANC__DICOM_WEB__ENABLE: "true"
       ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__PLUGINS: '["/usr/share/orthanc/plugins/libOrthancDicomWeb.so"]'
       ORTHANC__REGISTERED_USERS: |-
         {"orthanc": "orthanc_secure_pass"}
     ports: ["8042:8042"]
@@ -91,6 +92,7 @@ services:
     ports: ["3001:80"]
     volumes:
       - ./ohif-config/app-config.js:/usr/share/nginx/html/app-config.js:ro
+      - ./docker/ohif/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
       interval: 10s
