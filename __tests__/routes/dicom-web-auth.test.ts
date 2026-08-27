@@ -1,9 +1,9 @@
 /**
- * Gate — DICOMweb proxy enforces an authenticated session.
+ * Gate — DICOMweb proxy is public (no session check).
  *
- * The raw-binary proxy cannot use withAuth's structured envelope, so it
- * verifies the session cookie explicitly. Anonymous or forged sessions get a
- * JSON 401 before any Orthanc traffic happens.
+ * The DICOMweb route is exempt from authentication so that the OHIF viewer
+ * iframe (which runs cross-port and cannot carry session cookies) can access
+ * DICOMweb endpoints. The proxy.ts handles auth for the main app.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,27 +38,36 @@ beforeEach(() => {
 });
 
 describe("GET /api/orthanc/dicom-web/[...path] — session gate", () => {
-  it("returns 401 JSON when no session cookie is present", async () => {
+  it("passes through without session check (public for OHIF iframe)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ ID: "study-1" }]), { status: 200 }),
+    );
+
     const res = await GET(req("/api/orthanc/dicom-web/studies"), {
       params: Promise.resolve({ path: ["studies"] }),
     });
 
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
-  it("returns 401 for an invalid session token", async () => {
+  it("passes through even without a valid session token", async () => {
     vi.mocked(verifySessionToken).mockResolvedValue(null);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ ID: "study-1" }]), { status: 200 }),
+    );
 
     const res = await GET(req("/api/orthanc/dicom-web/studies", "geraldos_session=forged"), {
       params: Promise.resolve({ path: ["studies"] }),
     });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
-  it("forwards to Orthanc only after the session verifies, without wildcard CORS", async () => {
+  it("forwards to Orthanc without wildcard CORS", async () => {
     vi.mocked(verifySessionToken).mockResolvedValue(session as never);
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify([{ ID: "study-1" }]), { status: 200 }),
@@ -70,7 +79,6 @@ describe("GET /api/orthanc/dicom-web/[...path] — session gate", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
-    expect(verifySessionToken).toHaveBeenCalledWith("valid");
     expect(fetchSpy).toHaveBeenCalledWith(
       "http://orthanc.test:8042/dicom-web/studies?limit=5",
       expect.objectContaining({ method: "GET" }),
