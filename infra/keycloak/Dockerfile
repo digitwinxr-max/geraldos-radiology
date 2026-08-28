@@ -17,3 +17,8 @@ RUN /opt/keycloak/bin/kc.sh build --health-enabled=true --metrics-enabled=true
 
 USER 1000
 EXPOSE 8080
+
+# Run the optimized production server. Render executes the image CMD for
+# Docker-based services; setting it here (rather than relying on a service
+# dockerCommand override) guarantees the correct start command is used.
+CMD ["/opt/keycloak/bin/kc.sh", "start", "--optimized"]
