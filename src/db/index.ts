@@ -15,15 +15,19 @@ let _db: ReturnType<typeof drizzle> | null = null;
 /**
  * Derive the node-postgres `ssl` option from the connection string.
  *
- * Managed PostgreSQL (e.g. Render) requires TLS. The driver honors
- * `?sslmode=` in the URL and enables TLS when set to `require`/`verify-full`,
- * but Render's internal certificate cannot be validated from a public client,
- * so we relax peer verification. If the URL explicitly disables TLS
- * (`sslmode=disable`), we leave `ssl` unset to respect that intent.
+ * When `sslmode` is absent (the common Render configuration) TLS is enabled
+ * with `rejectUnauthorized: false`, which is Render-compatible because the
+ * managed tier uses a proxy certificate that a public client cannot validate.
+ *
+ * When `sslmode` is present the URL is authoritative: node-postgres maps
+ * `require`/`verify-ca`/`verify-full` to TLS with full verification and
+ * `disable` to no TLS. We must not pass our own `ssl` option in that case —
+ * doing so would silently downgrade a stricter mode. We never weaken TLS when
+ * the connection string explicitly requests certificate verification.
  */
-function resolveSsl(databaseUrl: string): { rejectUnauthorized: false } | undefined {
+export function resolveSsl(databaseUrl: string): { rejectUnauthorized: false } | undefined {
   const sslmode = new URL(databaseUrl).searchParams.get("sslmode");
-  if (sslmode === "disable") return undefined;
+  if (sslmode !== null) return undefined;
   return { rejectUnauthorized: false };
 }
 
