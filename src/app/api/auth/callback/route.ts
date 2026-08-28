@@ -7,6 +7,7 @@ import {
   extractRoles,
 } from "@/lib/auth/oidc";
 import { createSessionToken, SESSION_COOKIE, secureCookieOptions } from "@/lib/auth/session";
+import { publicAppOrigin } from "@/lib/auth/origin";
 import { recordAudit } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { rateLimited } from "@/lib/api-error";
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   const rl = await checkRateLimit("auth:callback", request, { limit: 20, windowSec: 60 });
   if (!rl.allowed) return rateLimited(rl.retryAfterSec);
 
-  const origin = request.nextUrl.origin;
+  const origin = publicAppOrigin(request);
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const savedState = request.cookies.get("geraldos_oauth_state")?.value;
