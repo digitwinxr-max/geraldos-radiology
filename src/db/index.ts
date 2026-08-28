@@ -12,6 +12,21 @@ import { Pool } from "pg";
 let _pool: Pool | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
+/**
+ * Derive the node-postgres `ssl` option from the connection string.
+ *
+ * Managed PostgreSQL (e.g. Render) requires TLS. The driver honors
+ * `?sslmode=` in the URL and enables TLS when set to `require`/`verify-full`,
+ * but Render's internal certificate cannot be validated from a public client,
+ * so we relax peer verification. If the URL explicitly disables TLS
+ * (`sslmode=disable`), we leave `ssl` unset to respect that intent.
+ */
+function resolveSsl(databaseUrl: string): { rejectUnauthorized: false } | undefined {
+  const sslmode = new URL(databaseUrl).searchParams.get("sslmode");
+  if (sslmode === "disable") return undefined;
+  return { rejectUnauthorized: false };
+}
+
 function ensureInitialized() {
   if (_db) return;
 
@@ -27,7 +42,10 @@ function ensureInitialized() {
     __arenaNextJsPostgresqlPool?: Pool;
   };
 
-  _pool = globalForDb.__arenaNextJsPostgresqlPool ?? new Pool({ connectionString: databaseUrl });
+  const ssl = resolveSsl(databaseUrl);
+  _pool =
+    globalForDb.__arenaNextJsPostgresqlPool ??
+    new Pool({ connectionString: databaseUrl, ssl });
 
   if (process.env.NODE_ENV !== "production") {
     globalForDb.__arenaNextJsPostgresqlPool = _pool;

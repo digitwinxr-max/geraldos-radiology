@@ -1,10 +1,9 @@
 /**
- * Gate — DICOMweb proxy requires a valid session.
+ * Gate — WADO-URI proxy requires a valid session.
  *
- * The DICOM route serves raw imaging data, so the session cookie is verified
- * explicitly on every request. A missing or invalid cookie gets a 401 and the
- * request never reaches Orthanc. With a valid session the proxy forwards to
- * Orthanc without wildcard CORS.
+ * WADO-URI serves DICOM pixel data, so the session cookie is verified
+ * explicitly before any Orthanc traffic. A missing or invalid cookie gets a
+ * 401 and the request never reaches Orthanc.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,13 +17,16 @@ vi.mock("@/lib/integrations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/integrations")>();
   return {
     ...actual,
-    integrationConfig: { ...actual.integrationConfig, orthanc: { ...actual.integrationConfig.orthanc, url: "http://orthanc.test:8042" } },
+    integrationConfig: {
+      ...actual.integrationConfig,
+      orthanc: { ...actual.integrationConfig.orthanc, url: "http://orthanc.test:8042" },
+    },
     orthancAuthHeader: vi.fn().mockReturnValue({}),
   };
 });
 
 import { verifySessionToken } from "@/lib/auth/session";
-import { GET } from "@/app/api/orthanc/dicom-web/[...path]/route";
+import { GET } from "@/app/api/orthanc/wado-uri/route";
 
 const session = { sub: "u1", name: "User", roles: ["radiologist"], iss: "test" };
 
@@ -38,15 +40,13 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("GET /api/orthanc/dicom-web/[...path] — session gate", () => {
+describe("GET /api/orthanc/wado-uri — session gate", () => {
   it("returns 401 without a session cookie and does not reach Orthanc", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ ID: "study-1" }]), { status: 200 }),
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
     );
 
-    const res = await GET(req("/api/orthanc/dicom-web/studies"), {
-      params: Promise.resolve({ path: ["studies"] }),
-    });
+    const res = await GET(req("/api/orthanc/wado-uri?requestType=WADO&studyUID=1.2.3"));
 
     expect(res.status).toBe(401);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -56,34 +56,35 @@ describe("GET /api/orthanc/dicom-web/[...path] — session gate", () => {
   it("returns 401 when the session token is invalid", async () => {
     vi.mocked(verifySessionToken).mockResolvedValue(null);
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ ID: "study-1" }]), { status: 200 }),
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
     );
 
-    const res = await GET(req("/api/orthanc/dicom-web/studies", "geraldos_session=forged"), {
-      params: Promise.resolve({ path: ["studies"] }),
-    });
+    const res = await GET(req("/api/orthanc/wado-uri?studyUID=1.2.3", "geraldos_session=forged"));
 
     expect(res.status).toBe(401);
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 
-  it("forwards to Orthanc without wildcard CORS when the session is valid", async () => {
+  it("forwards to Orthanc WADO and returns pixels with a valid session", async () => {
     vi.mocked(verifySessionToken).mockResolvedValue(session as never);
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ ID: "study-1" }]), { status: 200 }),
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "application/dicom" },
+      }),
     );
 
-    const res = await GET(req("/api/orthanc/dicom-web/studies?limit=5", "geraldos_session=valid"), {
-      params: Promise.resolve({ path: ["studies"] }),
-    });
+    const res = await GET(
+      req('/api/orthanc/wado-uri?requestType=WADO&studyUID=1.2.3&seriesUID=4.5.6', "geraldos_session=valid"),
+    );
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("access-control-allow-origin")).toBeNull();
     expect(fetchSpy).toHaveBeenCalledWith(
-      "http://orthanc.test:8042/dicom-web/studies?limit=5",
+      "http://orthanc.test:8042/wado?requestType=WADO&studyUID=1.2.3&seriesUID=4.5.6",
       expect.objectContaining({ method: "GET" }),
     );
+    expect(res.headers.get("content-type")).toBe("application/dicom");
 
     fetchSpy.mockRestore();
   });

@@ -24,10 +24,20 @@ function unauthorized(): Response {
   );
 }
 
+async function requireSession(request: NextRequest): Promise<boolean> {
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!token) return false;
+  return (await verifySessionToken(token)) !== null;
+}
+
 async function proxy(request: NextRequest, segments: string[]): Promise<Response> {
-  // DICOMweb requests are authenticated server-side via Orthanc credentials.
-  // The session check is relaxed here because the OHIF viewer iframe cannot
-  // carry the same-origin session cookie when embedded cross-port.
+  // DICOM pixels/CLINICAL data must never be served without an authenticated
+  // user. The OHIF viewer is served from the SAME origin (see docs/DEPLOYMENT.md
+  // §7.2) so it carries the session cookie on DICOMweb calls.
+  if (!(await requireSession(request))) {
+    return unauthorized();
+  }
+
   const { url } = integrationConfig.orthanc;
   if (!url) {
     return new Response(JSON.stringify({ error: { code: "NOT_CONFIGURED", message: "Orthanc is not configured (ORTHANC_URL)" } }), {
