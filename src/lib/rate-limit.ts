@@ -1,14 +1,16 @@
 /**
  * GeraldOS — Rate Limiting
  *
- * Fixed-window counters keyed by bucket + client IP. Counters live in Redis
- * when REDIS_URL is configured (shared across instances); any Redis failure
- * — or no Redis at all — transparently falls back to an in-memory map so the
- * limiter never fails open.
+ * Fixed-window counters keyed by bucket + client IP, stored in an in-memory
+ * map. The store is capped (MEMORY_MAX_KEYS) so a flood of unique keys cannot
+ * grow it unbounded — the cap clears the map rather than leaking memory.
+ *
+ * NOTE: per-instance counters only. Multi-instance deployments should place a
+ * shared rate-limiter (e.g. a reverse proxy) in front of the app; the
+ * application limiter is protection against per-instance abuse.
  */
 
 import type { NextRequest } from "next/server";
-import { getRedis } from "@/lib/redis";
 
 export interface RateLimitOptions {
   /** Maximum number of requests allowed inside the window. */
@@ -40,7 +42,7 @@ export function clientIp(request: NextRequest): string {
   return "unknown";
 }
 
-// ─── In-memory fallback store ───
+// ─── In-memory store ───
 
 interface MemoryEntry {
   count: number;
@@ -49,7 +51,7 @@ interface MemoryEntry {
 
 const memoryStore = new Map<string, MemoryEntry>();
 
-/** Cap the fallback store so a flood of unique keys cannot grow it unbounded. */
+/** Cap the store so a flood of unique keys cannot grow it unbounded. */
 const MEMORY_MAX_KEYS = 10_000;
 
 function memoryCheck(key: string, opts: RateLimitOptions, now: number): RateLimitResult {
@@ -62,27 +64,6 @@ function memoryCheck(key: string, opts: RateLimitOptions, now: number): RateLimi
   entry.count += 1;
   const retryAfterSec = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
   return { allowed: entry.count <= opts.limit, retryAfterSec };
-}
-
-// ─── Redis-backed check ───
-
-async function redisCheck(key: string, opts: RateLimitOptions): Promise<RateLimitResult | null> {
-  try {
-    const redis = await getRedis();
-    if (!redis) return null;
-    const redisKey = `geraldos:rl:${key}`;
-    const count = await redis.incr(redisKey);
-    if (count === 1) {
-      await redis.expire(redisKey, opts.windowSec);
-      return { allowed: true, retryAfterSec: 0 };
-    }
-    if (count <= opts.limit) return { allowed: true, retryAfterSec: 0 };
-    const ttl = await redis.ttl(redisKey);
-    return { allowed: false, retryAfterSec: ttl > 0 ? ttl : opts.windowSec };
-  } catch {
-    // Redis error mid-flight — fall back to the in-memory counter.
-    return null;
-  }
 }
 
 // ─── Public API ───
@@ -99,8 +80,6 @@ export async function checkRateLimit(
   subject?: string,
 ): Promise<RateLimitResult> {
   const key = `${bucket}:${subject ?? clientIp(request)}`;
-  const viaRedis = await redisCheck(key, opts);
-  if (viaRedis) return viaRedis;
   return memoryCheck(key, opts, Date.now());
 }
 

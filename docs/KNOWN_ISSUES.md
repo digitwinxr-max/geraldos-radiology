@@ -152,3 +152,40 @@ issuer validation, role attribution via the access token (ADR-011), forged-token
 and zero-role fail-closed behaviour. Refresh-token rotation remains unexercised
 (sessions are app-issued HS256; refresh is only needed for long-lived OHIF
 embedded flows).
+
+### 11. Keycloak OIDC identity layer — REMOVED (native auth)
+
+- **Location**: `src/lib/auth/oidc.ts`, `/api/auth/callback`, Keycloak compose
+  service + realm import, `KEYCLOAK_*` env vars.
+- **Decision**: Native authentication (ADR-012): staff scrypt hashes in
+  PostgreSQL + HS256 sessions. The OIDC code flow, JWKS verification and the
+  Keycloak container were removed; `auth-origin.test.ts` and the OIDC-heavy
+  integration helpers were rewritten for the native login flow.
+
+### 12. Redis event fan-out + rate limiting — REMOVED (PostgreSQL-only)
+
+- **Location**: `src/lib/redis.ts`, Redis compose services, `REDIS_URL`,
+  ioredis dependency, relay in `src/lib/events.ts`.
+- **Decision**: `event_log` is the only event bus (ADR-013); rate limiting is
+  in-memory and bounded. `__integration__/events.test.ts` now proves durability
+  + ordered reads against PostgreSQL only. Residual trade-off: per-instance
+  rate-limit windows (see `walkthrough.md` → REMAINING RISKS).
+
+### 13. MinIO / Dicoogle / HAPI FHIR / n8n / LangGraph — REMOVED (no production-critical consumers)
+
+- **Locations**: `src/app/api/minio/*`, `src/app/api/dicoogle/*`,
+  `src/app/api/fhir`, `src/app/api/n8n/*`, `src/app/api/webhooks/n8n`,
+  `services/*.mjs`, `docker/{keycloak,dicoogle,ohif}`, `src/lib/agents.ts`
+  tool text, `src/app/api/agents/chat` LangGraph branch.
+- **Decision**: Orthanc is the authoritative DICOM store (no object storage or
+  search index needed); in-app agents on PostgreSQL replace LangGraph; n8n
+  webhooks and FHIR had no production-critical consumers. Tests for removed
+  surfaces (`webhooks.test.ts`, `webhook-secret.test.ts`) were removed with
+  them.
+
+### 14. `dotenv` dependency — REMOVED
+
+- **Location**: `vitest.integration.config.mts` used `dotenv` to load
+  `.env.integration`.
+- **Remediation**: Replaced with Node's built-in `process.loadEnvFile`
+  (guarded by `existsSync`); the package and its lockfile entry were pruned.

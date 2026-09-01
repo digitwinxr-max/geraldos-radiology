@@ -78,23 +78,8 @@ export const env = {
   get authSecret(): string {
     return resolveEnv("AUTH_SECRET", DEV_SECRET);
   },
-  /**
-   * Browser-facing public origin for this app (e.g. https://app.example.com).
-   * When set, OAuth redirect_uris and post-login redirects are derived from it
-   * instead of the possibly-internal request origin. Optional — when absent,
-   * callers fall back to the incoming request origin (development behaviour).
-   */
+  /** Browser-facing public origin for this app (e.g. https://app.example.com). */
   get publicAppUrl(): string {
     return (process.env.PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
-  },
-  get keycloakUrl(): string {
-    return process.env.KEYCLOAK_URL ?? "";
-  },
-  get keycloakClientSecret(): string {
-    // Only enforced when Keycloak is configured
-    if (process.env.KEYCLOAK_URL) {
-      return resolveEnv("KEYCLOAK_CLIENT_SECRET");
-    }
-    return process.env.KEYCLOAK_CLIENT_SECRET ?? "";
   },
 } as const;

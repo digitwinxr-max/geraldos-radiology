@@ -10,7 +10,6 @@ import { useAuthMe } from "@/hooks/use-auth-me";
 
 interface MeState {
   authenticated: boolean;
-  keycloakEnabled: boolean;
   user?: { name: string; roles: string[]; iss: string };
 }
 

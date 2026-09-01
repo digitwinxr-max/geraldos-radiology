@@ -6,7 +6,10 @@
 #   2. Render Dashboard → New → Blueprint → Connect digitwinxr-max/geraldos-radiology
 #   3. Render will create the database + web service with all env vars linked
 #
-# If you already have a manual service, delete it first, then use Blueprint.
+# After first deploy, apply migrations and seed demo staff via the service's
+# Render Shell (or a one-off job):
+#   npm run db:migrate
+#   npm run db:seed   (development/demo databases only — see scripts/db-seed.mjs)
 
 services:
   # ── Next.js Web Service ──
@@ -23,8 +26,8 @@ services:
           property: connectionString
       - key: AUTH_SECRET
         generateValue: true
-      - key: REDIS_URL
-        value: ""  # Optional — add Upstash Redis URL here if needed
+      - key: PUBLIC_APP_URL
+        sync: false
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
       - key: HOSTNAME

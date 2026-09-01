@@ -28,26 +28,6 @@ vi.mock("@/db", () => ({
   },
 }));
 
-// Mock integrations
-vi.mock("@/lib/integrations", () => ({
-  integrationConfig: {
-    redis: { url: "" },
-  },
-}));
-
-// Mock ioredis
-vi.mock("ioredis", () => ({
-  default: vi.fn().mockImplementation(() => ({
-    connect: vi.fn().mockResolvedValue(undefined),
-    multi: vi.fn().mockReturnValue({
-      xadd: vi.fn().mockReturnValue({
-        exec: vi.fn().mockResolvedValue([]),
-      }),
-    }),
-    on: vi.fn(),
-  })),
-}));
-
 import { publishEvent, listEvents, eventCounts, EVENT_TYPES } from "@/lib/events";
 
 describe("Event Bus", () => {
@@ -67,8 +47,9 @@ describe("Event Bus", () => {
       expect(true).toBe(true);
     });
 
-    it("should handle Redis unavailability gracefully", async () => {
-      // Redis is not configured in mock, should still work
+    it("should persist durably without any external broker", async () => {
+      // The event bus is PostgreSQL-native; publishEvent must not depend on
+      // No external broker is involved in the durable record.
       await publishEvent({
         type: EVENT_TYPES.STUDY_UPLOADED,
         aggregate: "orthanc",

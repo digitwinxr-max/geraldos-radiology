@@ -1,12 +1,12 @@
 /**
- * Integration helpers — cookie jar + full Keycloak authorization-code flow.
+ * Integration helpers — cookie jar + native GeraldOS login.
  *
  * The flow simulated here is exactly what a browser does:
- *   /api/auth/login → 302 Keycloak authorize → login form POST →
- *   302 back to /api/auth/callback?code&state → session cookie.
+ *   POST /api/auth/login { email, password } → staff (scrypt verify)
+ *   → Set-Cookie: geraldos_session (HS256).
  */
 
-import { env } from "./env";
+import { env, USERS, STAFF_PASSWORD_HASH, dockerExec } from "./env";
 
 export interface CookieJar {
   get(name: string): string | undefined;
@@ -38,8 +38,8 @@ export async function jarFetch(jar: CookieJar, url: string, init: RequestInit = 
   const headers = new Headers(init.headers);
   const existing = jar.header();
   if (existing) headers.set("cookie", existing);
-  // Browsers ALWAYS attach Origin to cross-origin-safe same-origin mutations;
-  // Node's fetch does not, and the platform's CSRF defence rightly requires it.
+  // Browsers ALWAYS attach Origin to same-origin mutations; Node's fetch does
+  // not, and the platform's CSRF defence rightly requires it.
   const method = (init.method ?? "GET").toUpperCase();
   const mutates = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
   if (mutates && !headers.has("origin")) {
@@ -50,30 +50,46 @@ export async function jarFetch(jar: CookieJar, url: string, init: RequestInit = 
   return res;
 }
 
-interface LoginForm {
-  action: string;
-}
+/**
+ * Provision the native-auth staff rows into the IT PostgreSQL. Uses the same
+ * scrypt hash for every user; run once per suite (idempotent: deletes any
+ * prior IT staff rows for these emails, then inserts fresh).
+ */
+export async function provisionStaff(): Promise<void> {
+  const emails = Object.values(USERS)
+    .map((u) => `'${u.email}'`)
+    .join(", ");
+  await dockerExec(env.postgresContainer, [
+    "psql", "-U", "geraldos_admin", "-d", "geraldos", "-c",
+    `DELETE FROM staff WHERE email IN (${emails});`,
+  ]);
 
-function parseLoginForm(html: string): LoginForm | null {
-  const match = html.match(/<form[^>]*id="kc-form-login"[^>]*action="([^"]+)"/)
-    ?? html.match(/<form[^>]*action="([^"]+)"[^>]*id="kc-form-login"/);
-  if (!match) return null;
-  return { action: match[1].replace(/&amp;/g, "&") };
+  const values = Object.values(USERS)
+    .map(
+      (u) =>
+        `('${u.email}', '${u.role}', '${u.firstName}', '${u.lastName}', '${STAFF_PASSWORD_HASH}', 'active')`,
+    )
+    .join(",\n");
+  const sql = `
+    INSERT INTO staff (email, role, first_name, last_name, password_hash, status)
+    VALUES ${values};
+  `;
+  await dockerExec(env.postgresContainer, ["psql", "-U", "geraldos_admin", "-d", "geraldos", "-c", sql]);
 }
 
 /**
- * Drive the complete GeraldOS + Keycloak login for a seeded realm user.
- * Returns the authenticated cookie jar (geraldos_session set).
+ * Native GeraldOS login: POST /api/auth/login with staff credentials and
+ * return the authenticated cookie jar (geraldos_session set).
  *
- * The app's login/callback endpoints are rate limited (deliberately); retries
- * with backoff honour Retry-After so parallel suites behave like well-behaved
- * browser traffic rather than tripping the guard permanently.
+ * The login endpoint is rate limited (deliberately); retries with backoff
+ * honour Retry-After so parallel suites behave like well-behaved browser
+ * traffic rather than tripping the guard permanently.
  */
-export async function keycloakLogin(username: string, password: string): Promise<CookieJar> {
+export async function nativeLogin(email: string, password: string): Promise<CookieJar> {
   let lastError: Error = new Error("login not attempted");
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      return await loginOnce(username, password);
+      return await loginOnce(email, password);
     } catch (error) {
       lastError = error as Error;
       if (!lastError.message.includes("429")) throw lastError;
@@ -85,49 +101,23 @@ export async function keycloakLogin(username: string, password: string): Promise
   throw lastError;
 }
 
-async function loginOnce(username: string, password: string): Promise<CookieJar> {
+async function loginOnce(email: string, password: string): Promise<CookieJar> {
   const jar = createCookieJar();
 
-  // 1. Ask GeraldOS to start the OIDC dance.
-  const loginRes = await jarFetch(jar, `${env.appUrl}/api/auth/login`);
-  if (loginRes.status === 429) {
-    throw new Error(`429 from /api/auth/login, retry-after=${loginRes.headers.get("retry-after") ?? 0}`);
-  }
-  if (loginRes.status !== 302 && loginRes.status !== 307) {
-    throw new Error(`expected redirect from /api/auth/login, got ${loginRes.status}`);
-  }
-  const authorizeUrl = loginRes.headers.get("location");
-  if (!authorizeUrl?.includes("/realms/")) {
-    throw new Error(`authorize redirect does not point at Keycloak: ${authorizeUrl}`);
-  }
-
-  // 2. Fetch the Keycloak login form.
-  const formRes = await jarFetch(jar, authorizeUrl);
-  if (formRes.status !== 200) throw new Error(`Keycloak authorize returned ${formRes.status}`);
-  const form = parseLoginForm(await formRes.text());
-  if (!form) throw new Error("could not locate the Keycloak login form");
-
-  // 3. Submit credentials.
-  const postRes = await jarFetch(jar, form.action, {
+  const res = await jarFetch(jar, `${env.appUrl}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ username, password, credentialId: "" }).toString(),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password }),
   });
 
-  // 4. Follow redirects back through /api/auth/callback until we land in the app.
-  let current: Response | null = postRes;
-  for (let hops = 0; hops < 10 && current && current.status >= 300 && current.status < 400; hops++) {
-    const next = current.headers.get("location");
-    if (!next) break;
-    current = await jarFetch(jar, new URL(next, env.appUrl).toString());
-    if (current.status === 429) {
-      throw new Error(`429 during callback, retry-after=${current.headers.get("retry-after") ?? 0}`);
-    }
-    if (current.status === 200) break;
+  if (res.status === 429) {
+    throw new Error(`429 from /api/auth/login, retry-after=${res.headers.get("retry-after") ?? 0}`);
   }
-
+  if (res.status !== 200) {
+    throw new Error(`native login for ${email} returned ${res.status}: ${await res.text()}`);
+  }
   if (!jar.get("geraldos_session")) {
-    throw new Error(`login for ${username} did not produce a geraldos_session cookie`);
+    throw new Error(`login for ${email} did not produce a geraldos_session cookie`);
   }
   return jar;
 }

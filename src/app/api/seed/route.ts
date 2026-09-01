@@ -37,11 +37,16 @@ import {
 } from "@/db/schema";
 import { generateMRN, generateAccessionNumber } from "@/lib/utils";
 import { generateInvoiceNumber, generateReceiptNumber, generateClaimNumber, generateEmployeeNumber } from "@/lib/finance";
+import { hashPassword } from "@/lib/auth/password";
 import { seedNewModules } from "@/lib/seed-new-modules";
 
 // ─── Botswana localisation ───
 // Botswana Pula (BWP), abbreviated "P". VAT in Botswana is 14%.
 const VAT_RATE = 0.14;
+
+// Demo staff password (development seed only — replaced at deploy time).
+const DEMO_STAFF_PASSWORD = "GeraldOS-Demo-2026!";
+let demoPasswordHash: string | null = null;
 
 // Real Botswana medical aid schemes (no foreign insurers).
 const MEDICAL_AIDS = [
@@ -80,19 +85,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // One scrypt hash shared by all seeded demo staff — computed once so the
+    // seed stays fast and the plaintext demo password never appears in the
+    // database.
+    demoPasswordHash = await hashPassword(DEMO_STAFF_PASSWORD);
+
     // Seed staff
     const staffData = await db
       .insert(staff)
       .values([
-        { firstName: "Thato", lastName: "Ramotswe", role: "radiologist", specialization: "Neuroradiology", email: "thato.ramotswe@gerald.co.bw", phone: "+267 71 100 101" },
-        { firstName: "Kagiso", lastName: "Moeng", role: "radiologist", specialization: "Musculoskeletal", email: "kagiso.moeng@gerald.co.bw", phone: "+267 71 100 102" },
-        { firstName: "Boitumelo", lastName: "Seretse", role: "radiologist", specialization: "Body Imaging", email: "boitumelo.seretse@gerald.co.bw", phone: "+267 71 100 103" },
-        { firstName: "Tumelo", lastName: "Nkwe", role: "radiographer", specialization: "CT", email: "tumelo.nkwe@gerald.co.bw", phone: "+267 72 100 104" },
-        { firstName: "Lorato", lastName: "Sebina", role: "radiographer", specialization: "MRI", email: "lorato.sebina@gerald.co.bw", phone: "+267 72 100 105" },
-        { firstName: "Omphemetse", lastName: "Moilwa", role: "radiographer", specialization: "X-Ray", email: "omphemetse.moilwa@gerald.co.bw", phone: "+267 72 100 106" },
-        { firstName: "Refilwe", lastName: "Mosinyi", role: "receptionist", email: "refilwe.mosinyi@gerald.co.bw", phone: "+267 71 100 107" },
-        { firstName: "Gerald", lastName: "M", role: "radiologist", specialization: "General Radiology", email: "gerald.m@gerald.co.bw", phone: "+267 71 100 108" },
-        { firstName: "Gosego", lastName: "H", role: "administrator", specialization: "Administration", email: "gosego.h@gerald.co.bw", phone: "+267 71 100 109" },
+        { firstName: "Thato", lastName: "Ramotswe", role: "radiologist", specialization: "Neuroradiology", email: "thato.ramotswe@gerald.co.bw", phone: "+267 71 100 101", passwordHash: demoPasswordHash },
+        { firstName: "Kagiso", lastName: "Moeng", role: "radiologist", specialization: "Musculoskeletal", email: "kagiso.moeng@gerald.co.bw", phone: "+267 71 100 102", passwordHash: demoPasswordHash },
+        { firstName: "Boitumelo", lastName: "Seretse", role: "radiologist", specialization: "Body Imaging", email: "boitumelo.seretse@gerald.co.bw", phone: "+267 71 100 103", passwordHash: demoPasswordHash },
+        { firstName: "Tumelo", lastName: "Nkwe", role: "radiographer", specialization: "CT", email: "tumelo.nkwe@gerald.co.bw", phone: "+267 72 100 104", passwordHash: demoPasswordHash },
+        { firstName: "Lorato", lastName: "Sebina", role: "radiographer", specialization: "MRI", email: "lorato.sebina@gerald.co.bw", phone: "+267 72 100 105", passwordHash: demoPasswordHash },
+        { firstName: "Omphemetse", lastName: "Moilwa", role: "radiographer", specialization: "X-Ray", email: "omphemetse.moilwa@gerald.co.bw", phone: "+267 72 100 106", passwordHash: demoPasswordHash },
+        { firstName: "Refilwe", lastName: "Mosinyi", role: "receptionist", email: "refilwe.mosinyi@gerald.co.bw", phone: "+267 71 100 107", passwordHash: demoPasswordHash },
+        { firstName: "Gerald", lastName: "M", role: "radiologist", specialization: "General Radiology", email: "gerald.m@gerald.co.bw", phone: "+267 71 100 108", passwordHash: demoPasswordHash },
+        { firstName: "Gosego", lastName: "H", role: "administrator", specialization: "Administration", email: "gosego.h@gerald.co.bw", phone: "+267 71 100 109", passwordHash: demoPasswordHash },
       ])
       .returning();
 
@@ -135,6 +145,9 @@ export async function POST(request: NextRequest) {
         { patientId: patientData[2].id, referringPhysician: "Dr. B. Rantao", referringFacility: "Bokamoso Private Hospital", clinicalIndication: "Chest pain, shortness of breath", requestedProcedure: "CT Chest", priority: "stat", status: "accepted" },
         { patientId: patientData[3].id, referringPhysician: "Dr. L. Maribe", referringFacility: "Nyangabgwe Referral Hospital", clinicalIndication: "Annual screening mammogram", requestedProcedure: "Mammography", priority: "routine", status: "pending" },
         { patientId: patientData[4].id, referringPhysician: "Dr. K. Dube", referringFacility: "Sidilega Private Hospital", clinicalIndication: "Lower back pain radiating to left leg", requestedProcedure: "MRI Lumbar Spine", priority: "urgent", status: "accepted" },
+        { patientId: patientData[5].id, referringPhysician: "Dr. M. Kgosi", referringFacility: "Princess Marina Hospital", clinicalIndication: "Post-operative chest follow-up", requestedProcedure: "Chest X-Ray", priority: "routine", status: "accepted" },
+        { patientId: patientData[6].id, referringPhysician: "Dr. P. Modukanele", referringFacility: "Gaborone Private Hospital", clinicalIndication: "Right upper quadrant pain, query gallstones", requestedProcedure: "Abdominal Ultrasound", priority: "routine", status: "accepted" },
+        { patientId: patientData[7].id, referringPhysician: "Dr. B. Rantao", referringFacility: "Bokamoso Private Hospital", clinicalIndication: "Abdominal pain, weight loss", requestedProcedure: "CT Abdomen & Pelvis", priority: "routine", status: "pending" },
       ])
       .returning();
 

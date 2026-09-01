@@ -3,20 +3,18 @@ import { getJson } from "@/lib/api-client";
 import { qk } from "@/lib/query-keys";
 
 export interface ClientConfig {
-  keycloakEnabled?: boolean;
-  langgraphEnabled?: boolean;
   [key: string]: unknown;
 }
 
 /**
- * Public (non-secret) integration config. Shared single query — login, agents,
- * imaging and workstation-context all read the same data.
+ * Public (non-secret) integration config. Shared single query — imaging and
+ * workstation-context both read the same data.
  */
 export function useIntegrationsClientConfig() {
   return useQuery({
     queryKey: qk.integrationsClientConfig(),
     queryFn: () => getJson<ClientConfig>("/api/integrations/client-config"),
-    // Parity: consumers silently swallow failures (login falls back to false).
+    // Parity: consumers silently swallow failures.
     retry: false,
   });
 }

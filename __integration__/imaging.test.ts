@@ -7,8 +7,8 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { jarFetch, keycloakLogin, createCookieJar, type CookieJar } from "./helpers/http";
-import { env } from "./helpers/env";
+import { jarFetch, nativeLogin, provisionStaff, createCookieJar, type CookieJar } from "./helpers/http";
+import { env, USERS } from "./helpers/env";
 
 let admin!: CookieJar;
 let radiologist!: CookieJar;
@@ -29,9 +29,10 @@ async function studyUidForInstance(instanceId: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  admin = await keycloakLogin("it-admin", "it-password");
-  radiologist = await keycloakLogin("it-radiologist", "it-password");
-  receptionist = await keycloakLogin("it-receptionist", "it-password");
+  await provisionStaff();
+  admin = await nativeLogin(USERS.admin.email, USERS.admin.password);
+  radiologist = await nativeLogin(USERS.radiologist.email, USERS.radiologist.password);
+  receptionist = await nativeLogin(USERS.receptionist.email, USERS.receptionist.password);
 });
 
 function orthancAuth(): string {

@@ -1,6 +1,6 @@
 # GeraldOS API Reference Map
 
-This document catalogues all 73 API routes implemented in `src/app/api/`, specifying HTTP methods, required RBAC permissions, request schemas, and response contracts.
+This document catalogues the API routes implemented in `src/app/api/`, specifying HTTP methods, required RBAC permissions, request schemas, and response contracts.
 
 ---
 
@@ -51,6 +51,7 @@ This document catalogues all 73 API routes implemented in `src/app/api/`, specif
 | Endpoint | Method | RBAC Permission | Description |
 |---|---|---|---|
 | `/api/patients` | `GET`, `POST` | `patients:read` / `patients:write` | Search/list patients with MRN, name, and DOB filters; register new patient. |
+| `/api/referrals` | `GET`, `POST` | `referrals:read` / `referrals:write` | Referral intake: list referring-physician referrals (optionally by `patientId`); register a referral (audited, emits `referral.received`). |
 | `/api/appointments` | `GET`, `POST` | `appointments:read` / `appointments:write` | List scheduled appointments by date/modality; create appointment booking. |
 | `/api/equipment` | `GET`, `POST` | `equipment:read` / `equipment:write` | List operational imaging modalities; register new equipment. |
 | `/api/staff` | `GET`, `POST` | `staff:read` / `staff:write` | List clinical and operational staff members; register new staff. |
@@ -84,7 +85,7 @@ This document catalogues all 73 API routes implemented in `src/app/api/`, specif
 |---|---|---|---|
 | `/api/decisions` | `GET`, `POST` | `decisions:read` / `decisions:write` | List AI recommendations and proposed actions; submit candidate recommendation. |
 | `/api/decisions/[id]` | `GET`, `PATCH` | `decisions:read` / `decisions:write` | Inspect decision rule results; execute validated action or reject recommendation. |
-| `/api/agents/chat` | `POST` | Authenticated | Interactive multi-agent conversational dispatch with LangGraph or local DB simulation. |
+| `/api/agents/chat` | `POST` | Authenticated | Interactive multi-agent conversational dispatch over live PostgreSQL operational data (in-app runtime). |
 
 ### 2.6 Knowledge & SOPs
 | Endpoint | Method | RBAC Permission | Description |
@@ -127,18 +128,12 @@ This document catalogues all 73 API routes implemented in `src/app/api/`, specif
 | `/api/orthanc/proxy` | `GET` | Authenticated | Authenticated server-side proxy to Orthanc REST API. |
 | `/api/orthanc/dicom-web/*` | `GET` | Authenticated | DICOMweb standard endpoints (WADO-RS, QIDO-RS, STOW-RS). |
 | `/api/orthanc/upload` | `POST` | Authenticated | Direct multipart DICOM file upload to Orthanc. |
-| `/api/fhir` | `GET`, `POST` | Authenticated | HAPI FHIR R4 interoperability proxy. |
-| `/api/dicoogle/search` | `GET` | Authenticated | Dicoogle PACS text and tag search proxy. |
-| `/api/n8n/trigger` | `POST` | Authenticated | Trigger outbound n8n automation workflow. |
-| `/api/webhooks/n8n` | `POST` | Public (Rate limited) | Inbound webhook receiver for n8n automation events. |
-| `/api/minio/status` | `GET` | Authenticated | MinIO S3 bucket status and connectivity. |
-| `/api/minio/presign` | `POST` | Authenticated | Generate presigned PUT URL for browser-direct file upload. |
 
 ### 2.11 Platform Health & Telemetry
 | Endpoint | Method | RBAC Permission | Description |
 |---|---|---|---|
 | `/api/health` | `GET` | Public | Readiness and liveness container probe with database ping and uptime. |
 | `/api/metrics` | `GET` | Public | Prometheus-compatible in-memory request counts and latency histograms. |
-| `/api/integrations/status` | `GET` | Authenticated | Real-time health check of all 8 external services. |
+| `/api/integrations/status` | `GET` | Authenticated | Real-time health check of the external services (Orthanc, OHIF). |
 | `/api/integrations/client-config` | `GET` | Authenticated | Whitelisted non-secret configuration for frontend viewer setup. |
 | `/api/seed` | `POST` | Dev Only | Database demo data seeding (strictly disabled in production). |

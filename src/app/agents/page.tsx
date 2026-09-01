@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Shell } from "@/components/layout/shell";
-import { useIntegrationsClientConfig } from "@/hooks/use-integrations";
 import { mutate } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -56,11 +55,11 @@ const AGENTS: AgentDef[] = [
     id: "reception",
     name: "Reception Agent",
     mission: "Deliver a frictionless patient journey from registration to first appointment.",
-    description: "Automates patient check-in, validates insurance via FHIR Coverage resources, and manages consent workflows.",
+    description: "Automates patient check-in, validates insurance eligibility against the patient record, and manages consent workflows.",
     icon: UserPlus,
     lightColor: "bg-brand-soft",
     textColor: "text-brand",
-    tools: ["Patient registry", "FHIR Coverage lookup", "Consent tracker", "Queue board"],
+    tools: ["Patient registry", "Insurance eligibility", "Consent tracker", "Queue board"],
     memory: "Patient contact/insurance history, consent status, wait times",
     events: ["patient.registered", "appointment.checked_in", "referral.received"],
     responsibilities: ["Verify identity & eligibility", "Manage consents", "Estimate wait times", "Surface registration blockers"],
@@ -69,7 +68,7 @@ const AGENTS: AgentDef[] = [
     id: "scheduling",
     name: "Scheduling Agent",
     mission: "Optimise machine and radiographer allocation so no slot is ever wasted.",
-    description: "Detects conflicts, manages priority escalation, and triggers n8n reallocation workflows.",
+    description: "Detects conflicts, manages priority escalation, and proposes slot reallocation.",
     icon: Calendar,
     lightColor: "bg-ai-soft",
     textColor: "text-ai",
@@ -82,11 +81,11 @@ const AGENTS: AgentDef[] = [
     id: "workflow",
     name: "Workflow Agent",
     mission: "Keep every study moving through the pipeline and flag anything that stalls.",
-    description: "Monitors study progression, detects bottlenecks, and escalates TAT breaches through n8n.",
+    description: "Monitors study progression, detects bottlenecks, and escalates TAT breaches.",
     icon: GitBranch,
     lightColor: "bg-brand-soft",
     textColor: "text-brand",
-    tools: ["Stage tracker", "TAT thresholds", "n8n escalation", "Assignment board"],
+    tools: ["Stage tracker", "TAT thresholds", "Assignment board"],
     memory: "Per-study stage history and turnaround times",
     events: ["study.uploaded", "study.started", "study.completed", "report.approved"],
     responsibilities: ["Monitor progression", "Detect bottlenecks", "Suggest assignments", "Escalate urgent studies"],
@@ -112,7 +111,7 @@ const AGENTS: AgentDef[] = [
     icon: Wrench,
     lightColor: "bg-operational-soft",
     textColor: "text-operational",
-    tools: ["Equipment registry", "Calibration tracker", "Service dispatcher (n8n)", "Downtime model"],
+    tools: ["Equipment registry", "Calibration tracker", "Service dispatch", "Downtime model"],
     memory: "Calibration/maintenance history, utilisation rates",
     events: ["equipment.online", "equipment.offline", "maintenance.scheduled"],
     responsibilities: ["Calibration alerts", "Downtime impact", "Service dispatch", "Lifecycle tracking"],
@@ -125,7 +124,7 @@ const AGENTS: AgentDef[] = [
     icon: Package,
     lightColor: "bg-brand-soft",
     textColor: "text-brand",
-    tools: ["Stock ledger", "Reorder thresholds", "MinIO manifests", "Expiry monitor"],
+    tools: ["Stock ledger", "Reorder thresholds", "Expiry monitor"],
     memory: "Consumption rates, supplier lead times, expiry records",
     events: ["inventory.updated", "inventory.low_stock"],
     responsibilities: ["Reorder advisories", "Expiry monitoring", "Consumption forecasting", "Supplier tracking"],
@@ -179,14 +178,10 @@ interface ChatMessage {
 }
 
 const SOURCE_LABELS: Record<string, { label: string; variant: "success" | "warning" | "secondary" }> = {
-  langgraph: { label: "LangGraph Live", variant: "success" },
-  "local-fallback": { label: "Fallback (LangGraph down)", variant: "warning" },
-  "local-simulation": { label: "Simulated (unconfigured)", variant: "secondary" },
+  "local-simulation": { label: "Live data", variant: "success" },
 };
 
 export default function AgentsPage() {
-  const configQuery = useIntegrationsClientConfig();
-  const langgraphEnabled = Boolean(configQuery.data?.langgraphEnabled);
   const [chatAgent, setChatAgent] = useState<AgentDef | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -231,15 +226,14 @@ export default function AgentsPage() {
               <Bot className="h-6 w-6 text-white" />
             </div>
             <div className="flex-1">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">LangGraph Multi-Agent Orchestration</h3>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">GeraldOS Live-Data Agents</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Each agent is an independent state graph with its own mission, tools, memory and event subscriptions.
-                Agent runs execute on the LangGraph runtime and fall back to live-data simulation when offline.
-                AI actions never execute directly — they flow through the Decision Engine for approval.
+                Each agent operates directly on the platform&apos;s own PostgreSQL data with its own mission, tools, memory and
+                event subscriptions. AI actions never execute directly — they flow through the Decision Engine for approval.
               </p>
             </div>
-            <Badge variant={langgraphEnabled ? "success" : "secondary"} className="whitespace-nowrap">
-              {langgraphEnabled ? "LangGraph Connected" : "Local Simulation Mode"}
+            <Badge variant="success" className="whitespace-nowrap">
+              Live Data
             </Badge>
           </div>
         </CardContent>

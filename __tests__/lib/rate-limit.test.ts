@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-// Force the in-memory fallback path regardless of environment configuration.
-vi.mock("@/lib/redis", () => ({
-  getRedis: vi.fn().mockResolvedValue(null),
-}));
-
 import {
   checkRateLimit,
   clientIp,
@@ -77,7 +72,7 @@ describe("checkRateLimit (in-memory fallback)", () => {
 
     expect((await checkRateLimit("auth:dev", request(), opts)).allowed).toBe(true);
     expect((await checkRateLimit("auth:dev", request(), opts)).allowed).toBe(false);
-    expect((await checkRateLimit("webhooks:n8n", request(), opts)).allowed).toBe(true);
+    expect((await checkRateLimit("auth:login", request(), opts)).allowed).toBe(true);
   });
 
   it("keys on the explicit subject instead of the client IP when provided", async () => {

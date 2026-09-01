@@ -21,7 +21,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { jarFetch, keycloakLogin, type CookieJar } from "./helpers/http";
+import { jarFetch, nativeLogin, provisionStaff, type CookieJar } from "./helpers/http";
 import { env, USERS, dockerExec } from "./helpers/env";
 
 let receptionist!: CookieJar;
@@ -38,10 +38,11 @@ async function psql(sql: string): Promise<string> {
 }
 
 beforeAll(async () => {
+  await provisionStaff();
   [admin, radiologist, receptionist] = await Promise.all([
-    keycloakLogin(USERS.admin.username, USERS.admin.password),
-    keycloakLogin(USERS.radiologist.username, USERS.radiologist.password),
-    keycloakLogin(USERS.receptionist.username, USERS.receptionist.password),
+    nativeLogin(USERS.admin.email, USERS.admin.password),
+    nativeLogin(USERS.radiologist.email, USERS.radiologist.password),
+    nativeLogin(USERS.receptionist.email, USERS.receptionist.password),
   ]);
 });
 
@@ -220,7 +221,7 @@ describe("Synthetic end-to-end clinical workflow", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         status: "signed",
-        approvedBy: "Ruth Radiologist", // radiologist name from Keycloak
+        approvedBy: "Ruth Radiologist", // radiologist name from the native staff record
         findings: "E2E synthetic report: no acute findings.",
         impression: "Unremarkable CT chest.",
         recommendation: "Clinical correlation.",
@@ -232,7 +233,7 @@ describe("Synthetic end-to-end clinical workflow", () => {
     expect(finalReport.report.signedAt).toBeTruthy();
 
     // AI cannot sign: try as a zero-role user. Noroles user → 403.
-    const noroles = await keycloakLogin("it-noroles", "it-password");
+    const noroles = await nativeLogin(USERS.noroles.email, USERS.noroles.password);
     const attempt = await jarFetch(noroles, `${env.appUrl}/api/reports/${report.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },

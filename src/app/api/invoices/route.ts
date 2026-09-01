@@ -42,8 +42,10 @@ export async function POST(request: NextRequest) {
     try {
       const lineItems: LineItemInput[] = body.lineItems ?? [];
       const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-      const taxAmount = 0;
-      const totalAmount = subtotal + taxAmount;
+      // Botswana VAT is 14% (see src/app/api/seed/route.ts VAT_RATE).
+      const VAT_RATE = 0.14;
+      const taxAmount = Math.round(subtotal * VAT_RATE * 100) / 100;
+      const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
 
       const [invoice] = await db
         .insert(invoices)

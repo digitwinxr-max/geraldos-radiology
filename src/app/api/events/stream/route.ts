@@ -3,8 +3,8 @@
  *
  * Clients open an EventSource against this endpoint. Every ~5 seconds the server
  * polls the durable event_log table for new events since the last
- * `Last-Event-ID` and pushes them. (Redis is only a fan-out channel — the
- * stream always reads the durable record.)
+ * `Last-Event-ID` and pushes them. The stream reads the durable record directly
+ * (PostgreSQL is the event bus — there is no separate fan-out channel).
  *
  * The endpoint keeps a connection alive until the client disconnects.
  *

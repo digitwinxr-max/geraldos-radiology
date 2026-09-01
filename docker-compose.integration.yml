@@ -25,16 +25,6 @@ services:
       timeout: 3s
       retries: 30
 
-  redis:
-    image: redis:7-alpine
-    container_name: geraldos-it-redis
-    ports: ["56379:6379"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 3s
-      timeout: 3s
-      retries: 30
-
   orthanc:
     image: orthancteam/orthanc:latest
     container_name: geraldos-it-orthanc
@@ -57,22 +47,3 @@ services:
       retries: 30
       start_period: 10s
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:latest
-    container_name: geraldos-it-keycloak
-    command: start-dev --import-realm
-    environment:
-      KC_HOSTNAME: localhost
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_HEALTH_ENABLED: "true"
-    volumes:
-      # Realm + client + users bootstrap (mounted from ./docker/keycloak).
-      - ./docker/keycloak/geraldos-realm.json:/opt/keycloak/data/import/geraldos-realm.json:ro
-    ports: ["58080:8080"]
-    healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200\\|UP' || exit 1"]
-      interval: 10s
-      timeout: 8s
-      retries: 30
-      start_period: 60s

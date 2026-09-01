@@ -21,15 +21,15 @@ The following fail-closed guarantees are now enforced and regression-tested:
 | Guarantee | Enforcement | Test |
 |---|---|---|
 | Production refuses to boot without real secrets | `src/lib/env.ts` (`resolveEnv`) | `__tests__/lib/env-secrets.test.ts` |
-| Edge proxy fails closed without Keycloak (prod) / DEV_AUTH opt-in (dev) | `src/proxy.ts` | `__tests__/lib/proxy.test.ts` |
+| Edge proxy fails closed (401/redirect; dev-only 503 without auth path; DEV_AUTH opt-in) | `src/proxy.ts` | `__tests__/lib/proxy.test.ts` |
 | Only radiologists sign reports; zero-role sessions can never sign | `src/app/api/reports/[id]/route.ts` | `__tests__/routes/report-signing.test.ts` |
 | Decision engine + knowledge + workstation context require session + RBAC | respective routes | `__tests__/routes/previously-unauthed.test.ts` |
-| Inbound n8n webhooks require shared secret in production | `src/app/api/webhooks/n8n/route.ts` | `__tests__/routes/webhook-secret.test.ts` |
+| Native login mints sessions only for verified scrypt staff records | `src/app/api/auth/login/route.ts` | `__tests__/routes/auth.test.ts` |
 | AI observation/decision attribution bound to verified session | ai-review & decisions `[id]` routes | `__tests__/routes/ai-review-attribution.test.ts` |
 | DICOMweb proxy verifies session before touching Orthanc; no wildcard CORS | `src/app/api/orthanc/dicom-web/[...path]/route.ts` | `__tests__/routes/dicom-web-auth.test.ts` |
 | SSE event stream requires session | `src/app/api/events/stream/route.ts` | manual (session gate mirrors dicom-web) |
 | Workflow transitions are guarded by optimistic concurrency | `src/lib/workflow.ts` (conditional UPDATE → 409) | `__tests__/lib/workflow-concurrency.test.ts` |
-| Durable event record written before Redis fan-out | `src/lib/events.ts` | code order guarantee |
+| Durable event record written atomically with domain mutations (PG outbox) | `src/lib/events.ts` | `__tests__/lib/events.test.ts` |
 
 ---
 
@@ -45,15 +45,15 @@ The following fail-closed guarantees are now enforced and regression-tested:
 | **AI Review Assistant** | `COMPLETE` | `src/app/review/page.tsx`, `src/lib/ai-review.ts`, `src/app/api/ai-review/*` | Radiologists | Multi-modal observation cards, confidence metrics, differential diagnoses, literature links, accept/reject audit. |
 | **Structured Reporting** | `COMPLETE` | `src/app/reporting/page.tsx`, `src/services/reports-service.ts`, `src/lib/reporting.ts` | Radiologists, Referring Doctors | Modality templates, versioning, automated quality scoring, checklist validation, signing workflow. |
 | **AI Decision Engine** | `COMPLETE` | `src/lib/decision-engine.ts`, `src/services/decisions-service.ts` | Multi-agent runtime, System Admin | Enforces safety rules, parameter validation, manual approval gates, audit logging. |
-| **Multi-Agent Runtime** | `COMPLETE` | `src/lib/agents.ts`, `src/app/agents/page.tsx`, `src/app/api/agents/chat/route.ts` | Ops staff, Admins | 9 agents with tool execution; connects to LangGraph with seamless live DB fallback. |
+| **Multi-Agent Runtime** | `COMPLETE` | `src/lib/agents.ts`, `src/app/agents/page.tsx`, `src/app/api/agents/chat/route.ts` | Ops staff, Admins | 9 agents operating on live PostgreSQL data; AI assistive, radiologist signs. |
 | **Clinical Knowledge Hub** | `COMPLETE` | `src/app/knowledge/page.tsx`, `src/services/knowledge-service.ts`, `src/lib/knowledge.ts` | All clinical staff, Knowledge Agent | SOPs, protocols, guides, tagging, versioning, full-text category filtering. |
 | **Equipment & Maintenance** | `COMPLETE` | `src/app/equipment/page.tsx`, `src/services/equipment-service.ts` | Biomedical engineers, Operations | Equipment registration, calibration alerts, utilization meters, maintenance logs. |
 | **Inventory & Consumables** | `COMPLETE` | `src/app/inventory/page.tsx`, `src/services/inventory-service.ts` | Radiographers, Clinic store | Stock tracking, min/max alerts, stock-in/stock-out transactions, unit cost accounting. |
 | **Finance, Billing & Claims** | `COMPLETE` | `src/app/finance/page.tsx`, `src/services/finance-service.ts`, `src/lib/finance.ts` | Billing clerks, Finance managers | BWP currency, 14% VAT, Botswana medical aid schemes (BOMAID, BPOMAS, Pula), invoice & receipt generation. |
 | **Administration & RBAC** | `COMPLETE` | `src/app/administration/page.tsx`, `src/services/staff-service.ts`, `src/lib/rbac.ts` | System Administrators | Branch management, employee records, role permission matrices, session audit. |
-| **Authentication & OIDC** | `COMPLETE` | `src/proxy.ts`, `src/lib/auth/*`, `src/app/login/page.tsx` | All platform users | Keycloak OIDC with JWKS verification, HS256 session cookies, fail-closed edge proxy, dev login fallback. |
-| **Integrations & Monitoring** | `COMPLETE` | `src/app/settings/page.tsx`, `src/lib/integrations/*`, `src/app/api/integrations/*` | DevOps, Administrators | Live status and latency telemetry for 8 external services, client config endpoint. |
-| **Event Bus & Real-Time SSE** | `COMPLETE` | `src/lib/events.ts`, `src/app/api/events/stream/route.ts`, `src/hooks/use-events.ts` | UI notifications, Activity feeds | Redis Streams `XADD` + Postgres `event_log` persistence + Server-Sent Events stream. |
+| **Authentication (native)** | `COMPLETE` | `src/proxy.ts`, `src/lib/auth/*`, `src/app/login/page.tsx` | All platform users | Native staff login (scrypt + PostgreSQL), HS256 session cookies, fail-closed edge proxy, dev opt-in. |
+| **Integrations & Monitoring** | `COMPLETE` | `src/app/settings/page.tsx`, `src/lib/integrations/*`, `src/app/api/integrations/*` | DevOps, Administrators | Live status and latency telemetry for Orthanc + OHIF, client config endpoint. |
+| **Event Bus & Real-Time SSE** | `COMPLETE` | `src/lib/events.ts`, `src/app/api/events/stream/route.ts`, `src/hooks/use-events.ts` | UI notifications, Activity feeds | PostgreSQL `event_log` outbox (transactional) + Server-Sent Events stream reading the durable table. |
 | **Container & CI/CD** | `COMPLETE` | `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml` | Deployment & Delivery | Multi-stage Node 22 Alpine image, complete Compose topology, GitHub Actions pipeline with smoke test. |
 
 ---
@@ -63,5 +63,5 @@ The following fail-closed guarantees are now enforced and regression-tested:
 The previously uncommitted hardening work (fail-closed edge proxy, SSE session
 gate, and the five security test suites) has been reviewed, extended with the
 Aug-2026 hardening pass (see KNOWN_ISSUES.md §RESOLVED), and is ready for
-commit. All validation gates pass: typecheck, lint, 343 tests, coverage
+commit. All validation gates pass: typecheck, lint, 344 tests, coverage
 thresholds, and the standalone production build.

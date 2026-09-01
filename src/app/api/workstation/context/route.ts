@@ -52,7 +52,6 @@ async function contextHandler(request: NextRequest) {
     protocols: Record<string, unknown>[];
     similarCases: Record<string, unknown>[];
     teachingFiles: Record<string, unknown>[];
-    fhirLabSummary: string | null;
   } = {
     patient: null,
     history: null,
@@ -62,7 +61,6 @@ async function contextHandler(request: NextRequest) {
     protocols: [],
     similarCases: [],
     teachingFiles: [],
-    fhirLabSummary: null,
   };
 
   // ── Resolve patient identity ──
@@ -284,29 +282,6 @@ async function contextHandler(request: NextRequest) {
     out.similarCases = similar;
   } catch {
     // ai_observations table may not exist yet
-  }
-
-  // ── FHIR laboratory summary (best-effort) ──
-  if (patientMrn && integrationConfig.fhir.url) {
-    try {
-      const res = await timedFetch(
-        `${integrationConfig.fhir.url.replace(/\/$/, "")}/Observation?subject.identifier=${encodeURIComponent(patientMrn)}&_sort=-date&_count=8`,
-        { headers: { Accept: "application/fhir+json" } },
-        6000
-      );
-      if (res.ok) {
-        const json = (await res.json()) as { entry?: { resource?: { code?: { text?: string }; valueString?: string; valueQuantity?: { value?: number; unit?: string }; effectiveDateTime?: string } }[] };
-        const labs = (json.entry ?? []).map((e) => {
-          const r = e.resource ?? {};
-          return `${r.code?.text ?? "Lab"}${r.valueQuantity ? `: ${r.valueQuantity.value} ${r.valueQuantity.unit}` : r.valueString ? `: ${r.valueString}` : ""}${r.effectiveDateTime ? ` (${r.effectiveDateTime.slice(0, 10)})` : ""}`;
-        });
-        out.fhirLabSummary = labs.length > 0 ? labs.join("\n") : "No laboratory results on the FHIR server for this patient.";
-      } else {
-        out.fhirLabSummary = "FHIR server reachable but returned no laboratory results.";
-      }
-    } catch {
-      out.fhirLabSummary = null; // FHIR not configured/unreachable
-    }
   }
 
   return NextResponse.json({ ok: true, ...out });

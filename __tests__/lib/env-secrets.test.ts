@@ -15,8 +15,6 @@ beforeEach(() => {
   vi.unstubAllEnvs();
   vi.stubEnv("DATABASE_URL", "");
   vi.stubEnv("AUTH_SECRET", "");
-  vi.stubEnv("KEYCLOAK_URL", "");
-  vi.stubEnv("KEYCLOAK_CLIENT_SECRET", "");
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -45,17 +43,6 @@ describe("production — fail fast on missing or insecure secrets", () => {
     expect(env.authSecret).toBe("c2VjdXJlLXJhbmRvbS1wcm9kdWN0aW9uLXNlY3JldA");
   });
 
-  it("enforces KEYCLOAK_CLIENT_SECRET only when Keycloak is configured", () => {
-    vi.stubEnv("KEYCLOAK_URL", "http://keycloak:8080");
-
-    expect(() => env.keycloakClientSecret).toThrow(
-      /Missing required environment variable KEYCLOAK_CLIENT_SECRET/,
-    );
-
-    vi.stubEnv("KEYCLOAK_CLIENT_SECRET", "kc-secret");
-    expect(env.keycloakClientSecret).toBe("kc-secret");
-  });
-
   it("flags production mode", () => {
     expect(env.isProduction).toBe(true);
   });
@@ -75,8 +62,8 @@ describe("development — permissive fallbacks", () => {
     expect(env.databaseUrl).toBe("");
   });
 
-  it("never enforces KEYCLOAK_CLIENT_SECRET while Keycloak is unconfigured", () => {
-    expect(env.keycloakClientSecret).toBe("");
+  it("returns an empty public app URL when unset", () => {
+    expect(env.publicAppUrl).toBe("");
   });
 });
 

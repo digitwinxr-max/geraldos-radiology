@@ -467,7 +467,7 @@ export default function CommandCentrePage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Integration Health</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Full stack status: Orthanc, OHIF, Keycloak, FHIR, n8n, LangGraph, MinIO, Redis</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Core stack status: PostgreSQL, Orthanc, OHIF</p>
             </div>
           </div>
           <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-1" />

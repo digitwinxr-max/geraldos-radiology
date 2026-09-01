@@ -6,11 +6,12 @@
  * route.
  *
  * Policy (fail closed):
- *  - Keycloak configured: the session cookie is verified on every non-public
- *    request; invalid sessions get 401 (API) or a login redirect (pages).
- *  - Keycloak NOT configured: production refuses all non-public traffic with
- *    IDENTITY_NOT_CONFIGURED. In development the bypass is available only as
- *    an explicit opt-in (DEV_AUTH=true) and every bypassed request is logged.
+ *  - A valid GeraldOS session cookie is required on every non-public request;
+ *    invalid sessions get 401 (API) or a login redirect (pages).
+ *  - In development the sign-in bypass is available only as an explicit opt-in
+ *    (DEV_AUTH=true) and every bypassed request is logged.
+ *  - Production without any authentication path (no DEV_AUTH) refuses all
+ *    non-public traffic with 503.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -35,7 +36,7 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
-// ─── Fail-closed responses when no identity provider is configured ───
+// ─── Fail-closed responses when no authentication path is configured ───
 
 function identityNotConfigured(request: NextRequest): NextResponse {
   if (request.nextUrl.pathname.startsWith("/api/")) {
@@ -43,7 +44,7 @@ function identityNotConfigured(request: NextRequest): NextResponse {
       {
         error: {
           code: "IDENTITY_NOT_CONFIGURED",
-          message: "The identity provider is not configured. Production requires Keycloak.",
+          message: "No authentication path is configured. Set AUTH_SECRET and seed staff credentials, or enable DEV_AUTH in development.",
         },
       },
       { status: 503 },
@@ -64,19 +65,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Without Keycloak the platform must never serve protected traffic silently.
-  if (!env.keycloakUrl) {
-    // Explicit development opt-in keeps the platform demoable while identity
-    // services are being provisioned; every bypass is logged.
-    if (!env.isProduction && env.devAuthEnabled) {
-      logger.warn("degraded auth bypass active (DEV_AUTH=true, Keycloak not configured)", {
-        path: pathname,
-      });
-      return NextResponse.next();
-    }
-    return identityNotConfigured(request);
-  }
-
   // Verify the session cookie using the same logic as the rest of the app.
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (token) {
@@ -86,7 +74,21 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // No valid session — reject API calls with 401, redirect pages to login.
+  // No valid session — but the dev bypass may still apply in development.
+  if (env.devAuthEnabled && !env.isProduction) {
+    logger.warn("degraded auth bypass active (DEV_AUTH=true)", {
+      path: pathname,
+    });
+    return NextResponse.next();
+  }
+
+  // Without any authentication path the platform must never serve protected
+  // traffic silently.
+  if (!env.isProduction && !env.devAuthEnabled) {
+    return identityNotConfigured(request);
+  }
+
+  // Reject API calls with 401, redirect pages to login.
   if (pathname.startsWith("/api/")) {
     return NextResponse.json(
       { error: { code: "UNAUTHORIZED", message: "Authentication required" } },

@@ -167,3 +167,72 @@ This document records the foundational architectural decisions, context, rationa
 - **Consequences**: Role attribution works across Keycloak versions regardless
   of where the provider places `realm_access`. Forged/mistoken access tokens
   are rejected before their claims are read.
+
+---
+
+## ADR-012: Native Authentication on PostgreSQL Staff Records (supersedes ADR-005 §1, ADR-009, ADR-011)
+
+- **Status**: Accepted & Implemented (lean-production refactor).
+- **Context**: Keycloak OIDC was the identity layer: a separate container, a
+  realm import, OIDC discovery/token-exchange/JWKS verification in
+  `src/lib/auth/oidc.ts`, and a browser redirect dance through
+  `/api/auth/callback`. Staff identity and roles already live in the GeraldOS
+  `staff` table. The realm import carried no production users; every real
+  deployment needed a second identity system to manage, secure, and back up —
+  with no platform benefit.
+- **Decision**: Remove Keycloak/OIDC entirely. Authentication is native:
+  1. `staff.password_hash` stores `scrypt$N$r$p$<salt>$<key>` (16-byte random
+     salt, 64-byte derived key, `crypto.scrypt`, `timingSafeEqual` verify).
+  2. `POST /api/auth/login` verifies credentials against PostgreSQL and issues
+     the existing HS256 session cookie (`AUTH_SECRET`); roles come from the
+     staff member's `role` column (RBAC unchanged).
+  3. `/api/auth/logout` clears the cookie; `/api/auth/me` reads the session;
+     the dev bypass requires `DEV_AUTH=true` and is impossible in production.
+- **Consequences**: One less external system to operate; credentials never
+  leave PostgreSQL; fail-closed edge proxy behaviour retained (401/redirect;
+  dev-only 503 when no auth path configured). Sessions are still HS256 JWTs —
+  rotating `AUTH_SECRET` invalidates them all.
+
+## ADR-013: PostgreSQL-Only Event Bus (supersedes ADR-008, ADR-010)
+
+- **Status**: Accepted & Implemented (lean-production refactor).
+- **Context**: Redis Streams was the fan-out transport: `publishEvent` XADDed
+  to `geraldos:events` and a relay drained `published_at IS NULL` rows. The
+  durable record (`event_log`) and the SSE stream already read PostgreSQL
+  directly; Redis added a second store to run, monitor, and back up, while
+  SSE consumers still polled the table.
+- **Decision**: Remove Redis. `event_log` is the sole event bus:
+  - `recordEventInTransaction(tx, …)` persists atomically with the domain
+    mutation (transactional outbox — ADR-010's guarantee, no relay needed).
+  - `publishEvent` is the best-effort path for non-critical flows.
+  - `/api/events/stream` reads the table with an ordered cursor (exactly-once
+    per client cursor). Rate limiting is in-memory (bounded 10k keys).
+- **Consequences**: At-least-once delivery is inherent (consumers re-read rows;
+  idempotent domain effects unchanged). `publish_attempts` /
+  `last_publish_error` remain as legacy audit columns; the
+  `event_log_pending_idx` index was dropped in migration `0002_native_auth`.
+
+## ADR-014: Lean Production Infrastructure Topology
+
+- **Status**: Accepted & Implemented (lean-production refactor).
+- **Context**: The platform previously defined Keycloak, Redis, MinIO, HAPI
+  FHIR, Dicoogle, n8n and LangGraph as compose services with client/server
+  code paths, health probes and docs. Dependency tracing (see `walkthrough.md`
+  → REMOVED) showed none of them carried production-critical load that the
+  retained stack does not already provide:
+  - Orthanc remains authoritative for DICOM storage/DICOMweb (replaces the
+    MinIO + Dicoogle roles).
+  - PostgreSQL `staff` + HS256 sessions replace Keycloak (ADR-012).
+  - PostgreSQL `event_log` replaces Redis streams (ADR-013).
+  - In-app agents on PostgreSQL replace the LangGraph runtime; n8n and HAPI
+    FHIR had no production-critical consumers (probe/text references only).
+- **Decision**: Target topology is app + PostgreSQL + Orthanc + OHIF.
+  Removed: `services/{keycloak,fhir,dicoogle,n8n,ohif,langgraph,start-all}`,
+  `docker/{keycloak,dicoogle,ohif}`, MinIO routes/lib, FHIR/Dicoogle/n8n
+  routes, `src/lib/auth/oidc.ts`, `src/lib/redis.ts`, ioredis/aws4fetch/dotenv
+  dependencies. Deployment files (`docker-compose*.yml`, `render.yaml`,
+  `Dockerfile`, `.env.example`, CI) were aligned to the same topology.
+- **Consequences**: A smaller, auditable surface; the walkthrough REMAINING
+  RISKS section records the trade-offs (per-instance rate-limit windows,
+  multi-instance deployments need front-proxy stickiness; OHIF iframe cookie
+  constraints are unchanged).
