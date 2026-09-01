@@ -16,11 +16,10 @@ This document outlines the prioritised action plan for engineering agents contin
 ---
 
 ### P1 — Architectural & Integration Hardening
-1. **Keycloak OIDC Production Realm Sync**:
-   - Verify token refresh flow and JWKS key rotation handling in `src/lib/auth/oidc.ts`.
-     NOTE: issuer validation now uses the discovery-reported issuer (ADR-009);
-     front-channel redirects honour `KEYCLOAK_PUBLIC_URL`.
-   - Test seamless auto-provisioning of `staff` records upon first Keycloak SSO login.
+1. ~~**Keycloak OIDC Production Realm Sync**~~ — REMOVED by design. Identity is
+   native (ADR-012): staff scrypt hashes in PostgreSQL + HS256 sessions. No
+   external identity provider to sync. Staff password provisioning is the
+   remaining product work (an admin "set password" flow over `staff.password_hash`).
 
 2. **OHIF Same-Origin Topology** (see KNOWN_ISSUES O-1):
    - Ship a reference reverse-proxy config co-locating app + OHIF on one origin,
@@ -28,10 +27,9 @@ This document outlines the prioritised action plan for engineering agents contin
      Next.js rewrites. Until then the embedded iframe requires that topology;
      the imaging page's same-origin inspection works everywhere.
 
-3. **Transactional Outbox** (KNOWN_ISSUES O-2):
-   - Wrap domain mutations + `event_log` inserts in single DB transactions in
-     `src/services/*` for exactly-once event semantics; add a relay for
-     Redis-stream publication with XACK consumer groups.
+3. ~~**Transactional Outbox**~~ — DONE (ADR-013): `recordEventInTransaction`
+   persists `event_log` atomically with domain mutations in `src/services/*`;
+   SSE reads the durable table directly. No relay or broker remains.
 
 ---
 
@@ -45,9 +43,11 @@ This document outlines the prioritised action plan for engineering agents contin
 3. **Botswana Medical Aid EDI / Electronic Claims Batch Export**:
    - Implement automated XML/JSON batch claim export for BOMAID and BPOMAS formats in `src/services/finance-service.ts`.
 
-4. **Live Keycloak Integration Suite** (KNOWN_ISSUES O-4):
-   - Spin Keycloak in CI services, exercise discovery → authorize → callback →
-     JWKS verification end-to-end.
+4. ~~**Live Keycloak Integration Suite**~~ — REMOVED with Keycloak. The
+   integration gate now exercises the native login flow
+   (`__integration__/auth.test.ts`) plus the PostgreSQL event bus
+   (`__integration__/events.test.ts`) and chaos recovery
+   (`__integration__/resilience.test.ts`) against live containers.
 
 ---
 

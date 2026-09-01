@@ -65,6 +65,16 @@ export const createReportSchema = z.object({
   status: z.string().max(30).optional(),
 });
 
+export const createReferralSchema = z.object({
+  patientId: z.string().uuid("patientId must be a valid UUID"),
+  referringPhysician: z.string().min(1).max(200),
+  referringFacility: z.string().max(200).optional().nullable(),
+  clinicalIndication: z.string().min(1),
+  requestedProcedure: z.string().min(1).max(200),
+  priority: z.enum(["stat", "urgent", "routine"]).default("routine"),
+  notes: z.string().optional().nullable(),
+});
+
 export const createAppointmentSchema = z.object({
   patientId: z.string().uuid("patientId must be a valid UUID"),
   referralId: z.string().uuid().optional().nullable(),

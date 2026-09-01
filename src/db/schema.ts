@@ -81,6 +81,12 @@ export const staff = pgTable("staff", {
   specialization: varchar("specialization", { length: 100 }),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 30 }),
+  /**
+   * scrypt password hash (format: scrypt$N$r$p$salt$key) for native
+   * authentication. Null for staff who have never been provisioned with a
+   * password — such staff cannot sign in (see src/lib/auth/native-auth.ts).
+   */
+  passwordHash: text("password_hash"),
   status: varchar("status", { length: 20 }).default("active").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -538,10 +544,8 @@ export const studyAnnotations = pgTable(
 // ─── EVENT-DRIVEN ARCHITECTURE SCHEMA ───
 //
 // `event_log` doubles as the durable record AND the transactional outbox:
-// domain mutations insert their events inside the same database transaction
-// with `publishedAt = null`; the relay (src/lib/events.ts) fans pending rows
-// out to Redis Streams and stamps `publishedAt`. Replay = reset `publishedAt`.
-// Historical rows are backfilled to `occurredAt` so upgrades never replay.
+// domain mutations insert their events inside the same database transaction.
+// The SSE stream reads rows directly in insertion order (gapless cursor).
 export const eventLog = pgTable(
   "event_log",
   {
@@ -554,15 +558,13 @@ export const eventLog = pgTable(
     /** Request-scoped trace id (from the AsyncLocalStorage request context). */
     correlationId: varchar("correlation_id", { length: 64 }),
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
-    // ── Transactional outbox bookkeeping ──
-    /** Null = pending Redis fan-out; set once delivered (or not applicable). */
+    // ── Transactional outbox bookkeeping (retained for audit compatibility) ──
+    /** Set once the row is durable; retained for historical audit queries. */
     publishedAt: timestamp("published_at"),
     publishAttempts: integer("publish_attempts").default(0).notNull(),
     lastPublishError: text("last_publish_error"),
   },
   (t) => [
-    // Relay cursor: SELECT ... WHERE published_at IS NULL ORDER BY id.
-    index("event_log_pending_idx").on(t.id).where(sql`published_at IS NULL`),
     index("event_log_type_idx").on(t.eventType),
     index("event_log_aggregate_idx").on(t.aggregateId),
     index("event_log_correlation_idx").on(t.correlationId),

@@ -43,7 +43,7 @@ export const AGENTS: AgentDefinition[] = [
     id: "reception",
     name: "Reception Agent",
     mission: "Deliver a frictionless patient journey from registration to first appointment.",
-    tools: ["Patient registry", "HAPI FHIR Coverage lookup", "Consent tracker", "Queue board"],
+    tools: ["Patient registry", "Insurance eligibility", "Consent tracker", "Queue board"],
     memory: "Patient contact/insurance history, consent status, wait-time records",
     events: ["patient.registered", "appointment.checked_in", "referral.received"],
     responsibilities: [
@@ -73,7 +73,7 @@ export const AGENTS: AgentDefinition[] = [
     id: "workflow",
     name: "Workflow Agent",
     mission: "Keep every study moving through the pipeline and flag anything that stalls.",
-    tools: ["Stage tracker", "TAT thresholds", "n8n escalation", "Assignment board"],
+    tools: ["Stage tracker", "TAT thresholds", "Assignment board"],
     memory: "Per-study stage history and turnaround times",
     events: ["study.uploaded", "study.started", "study.completed", "report.approved"],
     responsibilities: [
@@ -103,13 +103,13 @@ export const AGENTS: AgentDefinition[] = [
     id: "equipment",
     name: "Equipment Agent",
     mission: "Maximise fleet uptime through proactive health monitoring.",
-    tools: ["Equipment registry", "Calibration tracker", "Service dispatcher (n8n)", "Downtime impact model"],
+    tools: ["Equipment registry", "Calibration tracker", "Downtime impact model"],
     memory: "Calibration/maintenance history, utilisation rates",
     events: ["equipment.online", "equipment.offline", "maintenance.scheduled"],
     responsibilities: [
       "Flag overdue calibration and maintenance windows",
       "Estimate downtime impact on the schedule",
-      "Dispatch service requests through n8n",
+      "Dispatch service requests to maintenance",
       "Track equipment lifecycle and utilisation",
     ],
     color: "amber",
@@ -118,7 +118,7 @@ export const AGENTS: AgentDefinition[] = [
     id: "inventory",
     name: "Inventory Agent",
     mission: "Guarantee critical consumables are never out of stock at scan time.",
-    tools: ["Stock ledger", "Reorder thresholds", "MinIO manifests", "Expiry monitor"],
+    tools: ["Stock ledger", "Reorder thresholds", "Expiry monitor"],
     memory: "Consumption rates, supplier lead times, expiry records",
     events: ["inventory.updated", "inventory.low_stock"],
     responsibilities: [
@@ -178,7 +178,7 @@ export const AGENTS: AgentDefinition[] = [
 
 export const AGENT_MAP = Object.fromEntries(AGENTS.map((a) => [a.id, a]));
 
-// ─── Live-data brain (local simulation when LangGraph is unreachable) ───
+// ─── Live-data brain (native; agents operate directly on the platform's own data) ───
 interface AgentContext {
   userId?: string;
 }
@@ -234,7 +234,7 @@ export async function handleAgentRequest(
         reply: [
           `Reception overview: ${s.pats.count} patients registered, ${s.apts.count} appointments on the books.`,
           lowStockLine,
-          `On “${message}”: I can verify identity/eligibility and manage consent. Insurance eligibility is cross-checked via HAPI FHIR Coverage when connected.`,
+          `On “${message}”: I can verify identity/eligibility and manage consent. Insurance eligibility is checked against the patient's recorded medical aid details.`,
           "All patient registration actions require front-desk confirmation before they are recorded.",
         ].join("\n\n"),
       };
@@ -253,7 +253,7 @@ export async function handleAgentRequest(
       return {
         reply: [
           `Pipeline: ${s.inPipeline[0]?.count ?? 0} active studies moving referral → archive; ${s.pendingReports[0]?.count ?? 0} reports awaiting radiologist action.`,
-          "Bottlenecks and TAT breaches are escalated through n8n and surfaced on the command centre.",
+          "Bottlenecks and TAT breaches are surfaced on the command centre and escalated to the duty manager.",
           `On “${message}”, I would recommend routing unassigned studies to the available radiologist — as a decision for approval, not an automatic action.`,
         ].join("\n\n"),
       };
@@ -272,7 +272,7 @@ export async function handleAgentRequest(
       return {
         reply: [
           `Fleet: ${s.eqs.count} units. ${eqLine}`,
-          "Calibration-due and maintenance-overdue units are flagged on the Equipment page; service requests dispatch via n8n.",
+          "Calibration-due and maintenance-overdue units are flagged on the Equipment page; service requests are dispatched to maintenance.",
           "Downtime impact on the schedule is estimated and shared with the Scheduling agent.",
         ].join("\n\n"),
       };

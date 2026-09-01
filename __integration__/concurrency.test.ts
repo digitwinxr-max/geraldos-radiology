@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { jarFetch, keycloakLogin, type CookieJar } from "./helpers/http";
+import { jarFetch, nativeLogin, provisionStaff, type CookieJar } from "./helpers/http";
 import { env, USERS } from "./helpers/env";
 
 let admin!: CookieJar;
@@ -25,9 +25,10 @@ async function psql(sql: string): Promise<string> {
 beforeAll(async () => {
   // Patients are registered by an administrator; the race itself is driven by
   // two radiologists (the clinically realistic actors).
+  await provisionStaff();
   [admin, radiologist] = await Promise.all([
-    keycloakLogin(USERS.admin.username, USERS.admin.password),
-    keycloakLogin(USERS.radiologist.username, USERS.radiologist.password),
+    nativeLogin(USERS.admin.email, USERS.admin.password),
+    nativeLogin(USERS.radiologist.email, USERS.radiologist.password),
   ]);
 });
 

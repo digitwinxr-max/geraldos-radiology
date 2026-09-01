@@ -21,30 +21,16 @@ interface IntegrationHealth {
 }
 
 const ENDPOINT_HINTS: Record<string, { env: string; hintPath: string }> = {
-  keycloak: { env: "KEYCLOAK_URL", hintPath: "/realms/geraldos" },
   orthanc: { env: "ORTHANC_URL", hintPath: "8042 · DICOMweb + REST" },
   ohif: { env: "OHIF_URL", hintPath: "3001 · viewer app" },
-  dicoogle: { env: "DICOOGLE_URL", hintPath: "8080 · /search" },
-  fhir: { env: "FHIR_URL", hintPath: "8090/fhir · /metadata" },
-  n8n: { env: "N8N_URL", hintPath: "5678 · /healthz" },
-  langgraph: { env: "LANGGRAPH_URL", hintPath: "8123 · /ok" },
-  minio: { env: "MINIO_ENDPOINT", hintPath: "9000 · /minio/health/live" },
-  redis: { env: "REDIS_URL", hintPath: "6379 · PING" },
   postgres: { env: "DATABASE_URL", hintPath: "5432 · SELECT 1" },
 };
 
-// Semantic accent per service: azure = core platform, violet = AI services.
+// Semantic accent per service: azure = core platform.
 const SERVICE_ACCENT: Record<string, string> = {
   orthanc: "bg-brand-soft text-brand-text",
   ohif: "bg-brand-soft text-brand-text",
-  dicoogle: "bg-brand-soft text-brand-text",
-  fhir: "bg-brand-soft text-brand-text",
   postgres: "bg-brand-soft text-brand-text",
-  redis: "bg-brand-soft text-brand-text",
-  minio: "bg-brand-soft text-brand-text",
-  keycloak: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-  n8n: "bg-brand-soft text-brand-text",
-  langgraph: "bg-ai-soft text-ai-text",
 };
 
 export default function SettingsPage() {
@@ -65,7 +51,7 @@ export default function SettingsPage() {
         <TabsContent value="integrations">
           <div className="mb-6 flex items-center justify-between">
             <p className="text-sm text-slate-500">
-              Live connectivity to the approved stack. Endpoints are configured through environment variables.
+              Live connectivity to the core imaging stack. Endpoints are configured through environment variables.
             </p>
             <button
               onClick={() => statusQuery.refetch()}
@@ -133,23 +119,22 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Authentication</CardTitle>
               <CardDescription>
-                Keycloak OIDC Authorization Code flow with JWT session cookies
+                Native staff authentication with scrypt password hashes and HS256 session cookies
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-lg border border-slate-100 p-4">
                 <p className="font-medium text-slate-900">Flow</p>
                 <p className="mt-1 font-mono text-xs text-slate-500">
-                  /login → /api/auth/login → Keycloak → /api/auth/callback → signed JWT session
+                  POST /api/auth/login → staff table (scrypt verify) → HS256 session cookie
                 </p>
               </div>
               <div className="space-y-3">
                 {[
-                  { route: "/api/auth/login", desc: "Initiates Keycloak Authorization Code flow (OIDC discovery + state cookie)" },
-                  { route: "/api/auth/callback", desc: "Exchanges code, verifies id_token via JWKS, issues HS256 session" },
+                  { route: "POST /api/auth/login", desc: "Verifies email + password against the staff table and issues the session cookie" },
                   { route: "/api/auth/me", desc: "Returns the current signed-in identity and roles" },
-                  { route: "/api/auth/logout", desc: "Clears the session and redirects to Keycloak end_session" },
-                  { route: "/api/auth/dev", desc: "Degraded-mode local session (when KEYCLOAK_URL is unset)" },
+                  { route: "/api/auth/logout", desc: "Clears the local session cookie" },
+                  { route: "/api/auth/dev", desc: "Development-only admin session (requires DEV_AUTH=true; never in production)" },
                 ].map((r) => (
                   <div key={r.route} className="flex items-start justify-between rounded-lg border border-slate-100 p-4">
                     <div>
@@ -176,7 +161,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
                 <p className="mt-4 text-xs text-slate-400">
-                  Roles originate from Keycloak <code>realm_access.roles</code> and client-scope mappings, propagated into the session JWT.
+                  Roles come from the staff member&apos;s <code>role</code> column in PostgreSQL and are propagated into the signed session JWT.
                 </p>
               </div>
             </CardContent>
@@ -208,18 +193,12 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Deployment</CardTitle>
-                <CardDescription>Full-stack compose bundle</CardDescription>
+                <CardDescription>Lean compose bundle</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {[
-                  "postgres (data store)",
-                  "redis (cache & queues)",
-                  "minio (object storage)",
+                  "postgres (data store + native auth)",
                   "orthanc (DICOM server)",
-                  "keycloak (identity)",
-                  "hapi-fhir (interoperability)",
-                  "dicoogle (search)",
-                  "n8n (automation)",
                   "ohif (viewer)",
                 ].map((name) => (
                   <div key={name} className="flex items-center justify-between">

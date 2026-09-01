@@ -2,7 +2,7 @@
  * Gate 1 — edge authentication gate policy tests.
  *
  * The proxy must fail closed: production never serves protected traffic
- * without an identity provider, and the development bypass is an explicit
+ * without a valid session, and the development bypass is an explicit
  * DEV_AUTH=true opt-in.
  */
 
@@ -17,13 +17,12 @@ vi.mock("@/lib/auth/session", () => ({
 import { verifySessionToken } from "@/lib/auth/session";
 import { proxy } from "@/proxy";
 
-const session = { sub: "u1", name: "User", roles: ["radiologist"], iss: "keycloak" };
+const session = { sub: "u1", name: "User", roles: ["radiologist"], iss: "geraldos-native" };
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
-  // Default scenario: Keycloak not configured, development mode.
-  vi.stubEnv("KEYCLOAK_URL", "");
+  // Default scenario: development mode, DEV_AUTH not enabled.
   vi.stubEnv("DEV_AUTH", "");
   vi.stubEnv("NODE_ENV", "development");
 });
@@ -38,7 +37,7 @@ function isPassThrough(res: Response): boolean {
 }
 
 describe("public routes", () => {
-  it.each(["/login", "/api/health", "/api/metrics", "/api/auth/callback", "/_next/static/x"])(
+  it.each(["/login", "/api/health", "/api/metrics", "/api/auth/login", "/api/auth/me", "/_next/static/x"])(
     "passes %s through unconditionally",
     async (path) => {
       const res = await proxy(req(path));
@@ -47,9 +46,7 @@ describe("public routes", () => {
   );
 });
 
-describe("Keycloak configured", () => {
-  beforeEach(() => vi.stubEnv("KEYCLOAK_URL", "http://keycloak:8080"));
-
+describe("valid session", () => {
   it("passes a request with a valid session", async () => {
     vi.mocked(verifySessionToken).mockResolvedValue(session as never);
 
@@ -62,6 +59,47 @@ describe("Keycloak configured", () => {
     expect(isPassThrough(res)).toBe(true);
     expect(verifySessionToken).toHaveBeenCalledWith("valid-token");
   });
+});
+
+describe("DEV_AUTH disabled — development fails closed", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("DEV_AUTH", "");
+  });
+
+  it("returns 503 IDENTITY_NOT_CONFIGURED for API requests", async () => {
+    const res = await proxy(req("/api/patients"));
+
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error.code).toBe("IDENTITY_NOT_CONFIGURED");
+  });
+
+  it("redirects page requests to the login screen with an explanation", async () => {
+    const res = await proxy(req("/worklist"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "http://localhost/login?error=identity_not_configured",
+    );
+  });
+
+  it("still fails closed when an invalid session cookie is presented", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+
+    const res = await proxy(
+      new NextRequest("http://localhost/api/worklist", {
+        headers: { cookie: "geraldos_session=expired" },
+      }),
+    );
+
+    expect(res.status).toBe(503);
+    expect(isPassThrough(res)).toBe(false);
+  });
+});
+
+describe("DEV_AUTH disabled — production", () => {
+  beforeEach(() => vi.stubEnv("NODE_ENV", "production"));
 
   it("returns 401 JSON for unauthenticated API requests", async () => {
     const res = await proxy(req("/api/patients"));
@@ -89,54 +127,41 @@ describe("Keycloak configured", () => {
 
     expect(res.status).toBe(401);
   });
-});
 
-describe("Keycloak NOT configured — production", () => {
-  beforeEach(() => vi.stubEnv("NODE_ENV", "production"));
-
-  it("returns 503 IDENTITY_NOT_CONFIGURED for API requests", async () => {
-    const res = await proxy(req("/api/patients"));
-
-    expect(res.status).toBe(503);
-    const body = await res.json();
-    expect(body.error.code).toBe("IDENTITY_NOT_CONFIGURED");
-  });
-
-  it("redirects page requests to the login screen with an explanation", async () => {
-    const res = await proxy(req("/worklist"));
-
-    expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe(
-      "http://localhost/login?error=identity_not_configured",
-    );
-  });
-
-  it("refuses the bypass even if DEV_AUTH is set", async () => {
+  it("refuses the dev bypass even if DEV_AUTH is set", async () => {
     vi.stubEnv("DEV_AUTH", "true");
 
-    const res = await proxy(req("/worklist"));
+    const apiRes = await proxy(req("/api/worklist"));
+    expect(apiRes.status).toBe(401);
 
-    expect(res.status).toBe(307);
-    expect(isPassThrough(res)).toBe(false);
+    const pageRes = await proxy(req("/worklist"));
+    expect(pageRes.status).toBe(307);
+    expect(pageRes.headers.get("location")).toBe("http://localhost/login");
+    expect(isPassThrough(pageRes)).toBe(false);
   });
 });
 
-describe("Keycloak NOT configured — development", () => {
-  it("fails closed when DEV_AUTH is not explicitly enabled", async () => {
-    const res = await proxy(req("/worklist"));
-
-    expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe(
-      "http://localhost/login?error=identity_not_configured",
-    );
+describe("DEV_AUTH enabled — development bypass", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("DEV_AUTH", "true");
   });
 
-  it("bypasses only when DEV_AUTH=true (explicit opt-in)", async () => {
-    vi.stubEnv("DEV_AUTH", "true");
-
+  it("passes protected traffic through without a session", async () => {
     const res = await proxy(req("/worklist"));
 
     expect(isPassThrough(res)).toBe(true);
-    expect(verifySessionToken).not.toHaveBeenCalled();
+  });
+
+  it("passes protected traffic through even when an invalid session is presented (dev-only degradation)", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+
+    const res = await proxy(
+      new NextRequest("http://localhost/api/worklist", {
+        headers: { cookie: "geraldos_session=expired" },
+      }),
+    );
+
+    expect(isPassThrough(res)).toBe(true);
   });
 });

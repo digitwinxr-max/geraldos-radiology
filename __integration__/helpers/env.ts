@@ -13,24 +13,28 @@ function required(name: string): string {
 
 export const env = {
   appUrl: process.env.IT_APP_URL ?? "http://localhost:3000",
-  keycloakInternal: required("KEYCLOAK_URL"),
-  keycloakPublic: process.env.KEYCLOAK_PUBLIC_URL ?? "http://localhost:58080",
-  realm: process.env.KEYCLOAK_REALM ?? "geraldos",
-  clientId: process.env.KEYCLOAK_CLIENT_ID ?? "geraldos-frontend",
-  redisUrl: required("REDIS_URL"),
   orthancUrl: required("ORTHANC_URL"),
   orthancUsername: process.env.ORTHANC_USERNAME ?? "orthanc",
   orthancPassword: required("ORTHANC_PASSWORD"),
   postgresContainer: "geraldos-it-postgres",
-  redisContainer: "geraldos-it-redis",
 };
 
+/**
+ * Native-auth staff identities. The suite provisions these rows into the IT
+ * PostgreSQL directly (see provisionStaff in helpers/http.ts) so login works
+ * exactly like production: scrypt hash in staff.password_hash, HS256 session.
+ * "noroles" intentionally maps to an unknown role so RBAC denies everything.
+ */
 export const USERS = {
-  admin: { username: "it-admin", password: "it-password" },
-  radiologist: { username: "it-radiologist", password: "it-password" },
-  receptionist: { username: "it-receptionist", password: "it-password" },
-  noroles: { username: "it-noroles", password: "it-password" },
+  admin: { email: "it-admin@gerald.test", password: "it-password", firstName: "Ada", lastName: "Administrator", role: "administrator" },
+  radiologist: { email: "it-radiologist@gerald.test", password: "it-password", firstName: "Ruth", lastName: "Radiologist", role: "radiologist" },
+  receptionist: { email: "it-receptionist@gerald.test", password: "it-password", firstName: "Rona", lastName: "Receptionist", role: "receptionist" },
+  noroles: { email: "it-noroles@gerald.test", password: "it-password", firstName: "Noah", lastName: "Noroles", role: "noroles" },
 } as const;
+
+/** Scrypt hash of "it-password" (N=16384, r=8, p=1, 64-byte key, 16-byte salt). */
+export const STAFF_PASSWORD_HASH =
+  "scrypt$16384$8$1$68f76b8e21f47fc61060a3b659cf7193$8bc24640de18bfcea12cd7f63d266cfbe554bbeb68bfd4d9d62f3b923ea2b387bd7f2ff422428460524d2ebaa5437737783ceaa5850e774d4a4370d2ec83e920";
 
 /** Run a command inside a compose container (docker exec). */
 export async function dockerExec(

@@ -1,32 +1,22 @@
 /**
- * Integration gate — event reliability against live Redis + PostgreSQL.
+ * Integration gate — event reliability against live PostgreSQL (the event bus).
  *
- * Proves the ADR-010 contract end to end:
- *   publish → durable row (pending) → relay XADD → publishedAt stamp
- *   ...and recovery when Redis dies and comes back.
+ * Proves the PostgreSQL-native contract end to end:
+ *   publish → durable row with correlation id → ordered reads via the API.
+ *   No secondary fan-out store exists; event_log is the record of truth.
  */
 
-import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
-import { jarFetch, keycloakLogin, type CookieJar } from "./helpers/http";
+import { describe, it, expect, beforeAll } from "vitest";
+import { jarFetch, nativeLogin, provisionStaff, type CookieJar } from "./helpers/http";
 import { env, USERS, dockerExec } from "./helpers/env";
 
-async function loginAdmin(): Promise<CookieJar> {
-  return keycloakLogin(USERS.admin.username, USERS.admin.password);
-}
+let admin!: CookieJar;
 
 async function psql(sql: string): Promise<string> {
   const res = await dockerExec(env.postgresContainer, [
     "psql", "-U", "geraldos_admin", "-d", "geraldos", "-tAc", sql,
   ]);
   return res.out.trim();
-}
-
-async function redisXrangeLast(count = 5): Promise<string> {
-  const res = await dockerExec(env.redisContainer, [
-    "redis-cli", "--raw", "XRANGE", "geraldos:events", "-", "+", "COUNT", String(count),
-  ]);
-  return res.out;
 }
 
 function poll<T>(fn: () => Promise<T | null>, timeoutMs: number, intervalMs = 500): Promise<T> {
@@ -45,11 +35,14 @@ function poll<T>(fn: () => Promise<T | null>, timeoutMs: number, intervalMs = 50
   });
 }
 
-describe("Event reliability — database event → publisher → Redis → consumer", () => {
-  it("persists the event durably AND fans it out to the Redis stream with correlation data", async () => {
-    const jar = await loginAdmin();
+beforeAll(async () => {
+  await provisionStaff();
+  admin = await nativeLogin(USERS.admin.email, USERS.admin.password);
+});
 
-    const res = await jarFetch(jar, `${env.appUrl}/api/events`, {
+describe("Event bus — database event → durable record → ordered reads", () => {
+  it("persists the event durably with a correlation id and makes it visible through the API", async () => {
+    const res = await jarFetch(admin, `${env.appUrl}/api/events`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -64,66 +57,39 @@ describe("Event reliability — database event → publisher → Redis → consu
     // The durable record exists with a request-scoped correlation id...
     const row = await poll(async () => {
       const out = await psql(
-        `SELECT id || '|' || COALESCE(correlation_id,'none') || '|' || COALESCE(published_at::text,'pending')
+        `SELECT id || '|' || COALESCE(correlation_id,'none')
          FROM event_log WHERE event_type='custom.integration.probe' ORDER BY id DESC LIMIT 1`,
       );
       return out.includes("|") ? out : null;
     }, 15_000);
     expect(row.split("|")[1]).not.toBe("none");
 
-    // ...and the relay stamped it published after fanning out to Redis.
-    await poll(async () => {
-      const state = await psql(
-        `SELECT CASE WHEN published_at IS NULL THEN 'pending' ELSE 'published' END
-         FROM event_log WHERE id=${row.split("|")[0]}`,
-      );
-      return state === "published" ? "published" : null;
-    }, 20_000);
-
-    const stream = await redisXrangeLast(10);
-    expect(stream).toContain("custom.integration.probe");
+    // ...and the event listing API surfaces it in insertion order.
+    const listed = await jarFetch(admin, `${env.appUrl}/api/events?type=custom.integration.probe`);
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    expect(body.data[0].eventType).toBe("custom.integration.probe");
   });
 
-  it("survives Redis going down and drains the backlog after it returns", async () => {
-    const jar = await loginAdmin();
+  it("returns events newest-first with correct counts and type filtering", async () => {
+    const marker = `custom.integration.order.${Date.now()}`;
+    await jarFetch(admin, `${env.appUrl}/api/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: marker, aggregate: "integration", aggregateId: "a", payload: {} }),
+    });
+    await jarFetch(admin, `${env.appUrl}/api/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: marker, aggregate: "integration", aggregateId: "b", payload: {} }),
+    });
 
-    // Force a dependency failure.
-    execFileSync("docker", ["stop", env.redisContainer], { timeout: 60_000 });
-
-    let pendingId = "";
-    try {
-      // Publish while Redis is down — the durable record must still land.
-      const res = await jarFetch(jar, `${env.appUrl}/api/events`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          type: "custom.integration.outage",
-          aggregate: "integration",
-          aggregateId: `outage-${Date.now()}`,
-          payload: {},
-        }),
-      });
-      expect(res.status).toBe(200);
-
-      pendingId = await poll(async () => {
-        const out = await psql(
-          `SELECT min(id)::text FROM event_log
-           WHERE event_type='custom.integration.outage' AND published_at IS NULL`,
-        );
-        return out ? out : null;
-      }, 20_000);
-      expect(Number(pendingId)).toBeGreaterThan(0);
-    } finally {
-      // Restore the dependency.
-      execFileSync("docker", ["start", env.redisContainer], { timeout: 60_000 });
-    }
-
-    // The self-healing relay must drain the pending backlog without an app restart.
-    await poll(async () => {
-      const state = await psql(
-        `SELECT count(*) FROM event_log WHERE id=${pendingId} AND published_at IS NOT NULL`,
-      );
-      return state === "1" ? "drained" : null;
-    }, 45_000);
+    const listed = await jarFetch(admin, `${env.appUrl}/api/events?type=${encodeURIComponent(marker)}`);
+    const body = await listed.json();
+    expect(body.data.length).toBe(2);
+    expect(body.meta.total).toBe(2);
+    const ids = body.data.map((e: { aggregateId: string }) => e.aggregateId);
+    expect(ids).toEqual(["b", "a"]);
   });
 });

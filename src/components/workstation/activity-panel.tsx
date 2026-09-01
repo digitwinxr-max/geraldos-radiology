@@ -183,7 +183,7 @@ function EventsTab() {
 
   return (
     <div className="p-3">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Platform event stream (Redis Streams + event_log)</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Platform event stream (event_log)</p>
       {filtered.length === 0 && <p className="py-4 text-center text-xs text-slate-400">No events recorded yet.</p>}
       <div className="space-y-0.5">
         {filtered.slice(0, 30).map((e) => (

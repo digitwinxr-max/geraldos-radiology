@@ -1,21 +1,23 @@
-﻿/**
- * Integration gate â€” LIVE authentication & authorization through real Keycloak
- * and the production server build. No mocks anywhere in this file.
+/**
+ * Integration gate — LIVE authentication & authorization through native
+ * GeraldOS login (scrypt staff records + HS256 session) and the production
+ * server build. No mocks anywhere in this file.
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { jarFetch, keycloakLogin, createCookieJar, type CookieJar } from "./helpers/http";
+import { jarFetch, nativeLogin, provisionStaff, createCookieJar, type CookieJar } from "./helpers/http";
 import { env, USERS } from "./helpers/env";
 
 const jars: Partial<Record<keyof typeof USERS, CookieJar>> = {};
 
 beforeAll(async () => {
+  await provisionStaff();
   for (const [key, user] of Object.entries(USERS)) {
-    jars[key as keyof typeof USERS] = await keycloakLogin(user.username, user.password);
+    jars[key as keyof typeof USERS] = await nativeLogin(user.email, user.password);
   }
 });
 
-describe("Authentication â€” browser/session â†’ Keycloak â†’ GeraldOS", () => {
+describe("Authentication — browser/session → native login → GeraldOS", () => {
   it("rejects anonymous access to a protected API with a structured 401", async () => {
     const res = await fetch(`${env.appUrl}/api/patients`);
     expect(res.status).toBe(401);
@@ -29,16 +31,16 @@ describe("Authentication â€” browser/session â†’ Keycloak â†’ Ger
     expect(res.headers.get("location")).toContain("/login");
   });
 
-  it("completes the OIDC code flow and issues a session bound to realm roles", async () => {
+  it("issues a session bound to the staff member's role", async () => {
     const me = await jarFetch(jars.admin!, `${env.appUrl}/api/auth/me`);
     expect(me.status).toBe(200);
     const body = await me.json();
     expect(body.user?.roles ?? body.roles).toContain("administrator");
   });
 
-  it("issues a HS256 session cookie with HttpOnly + SameSite attributes", async () => {
+  it("keeps the HS256 session cookie working over HTTP with the expected attributes", async () => {
     // The Set-Cookie was captured during login; re-request something that
-    // re-establishes nothing but proves the cookie works over HTTP.
+    // proves the cookie works over HTTP.
     const res = await jarFetch(jars.radiologist!, `${env.appUrl}/api/auth/me`);
     expect(res.status).toBe(200);
   });
@@ -49,9 +51,20 @@ describe("Authentication â€” browser/session â†’ Keycloak â†’ Ger
     });
     expect(res.status).toBe(401);
   });
+
+  it("rejects login with a wrong password and mints no session", async () => {
+    const jar = createCookieJar();
+    const res = await jarFetch(jar, `${env.appUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: USERS.admin.email, password: "definitely-wrong" }),
+    });
+    expect(res.status).toBe(401);
+    expect(jar.get("geraldos_session")).toBeUndefined();
+  });
 });
 
-describe("Authorization â€” role â†’ endpoint â†’ RBAC â†’ service", () => {
+describe("Authorization — role → endpoint → RBAC → service", () => {
   it("denies a receptionist administrative data (403 FORBIDDEN)", async () => {
     const res = await jarFetch(jars.receptionist!, `${env.appUrl}/api/staff`);
     expect(res.status).toBe(403);
@@ -66,9 +79,9 @@ describe("Authorization â€” role â†’ endpoint â†’ RBAC â†’ s
     expect(body.meta.total).toBeGreaterThanOrEqual(0);
   });
 
-  it("never lets a zero-role Keycloak user sign a report (fail closed)", async () => {
-    // Create a draft report first (administrator).
-const patientRes = await jarFetch(jars.receptionist!, `${env.appUrl}/api/patients`, {
+  it("never lets a role-less staff member sign a report (fail closed)", async () => {
+    // Create a draft report first (receptionist + administrator).
+    const patientRes = await jarFetch(jars.receptionist!, `${env.appUrl}/api/patients`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -79,7 +92,7 @@ const patientRes = await jarFetch(jars.receptionist!, `${env.appUrl}/api/patient
     const pb = await patientRes.json();
     const patient = pb.data ?? pb.patient ?? pb;
 
-const reportRes = await jarFetch(jars.admin!, `${env.appUrl}/api/reports`, {
+    const reportRes = await jarFetch(jars.admin!, `${env.appUrl}/api/reports`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ patientId: patient.id, findings: "integration draft" }),
@@ -101,7 +114,7 @@ const reportRes = await jarFetch(jars.admin!, `${env.appUrl}/api/reports`, {
   });
 
   it("keeps cross-origin mutations CSRF-rejected even with a valid session", async () => {
-const res = await jarFetch(jars.admin!, `${env.appUrl}/api/patients`, {
+    const res = await jarFetch(jars.admin!, `${env.appUrl}/api/patients`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: "http://evil.example" },
       body: JSON.stringify({ firstName: "X", lastName: "Y", dateOfBirth: "1990-01-01", gender: "male", mrn: "MRNCSRF" }),

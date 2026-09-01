@@ -8,7 +8,6 @@ import { parseListQuery, listEnvelope, serviceOpts } from "@/lib/list-query";
 import { listClaims } from "@/services/finance-service";
 import { generateClaimNumber } from "@/lib/finance";
 import { recordAudit } from "@/lib/audit";
-import { integrationConfig } from "@/lib/integrations";
 
 export const dynamic = "force-dynamic";
 
@@ -55,21 +54,6 @@ export async function POST(request: NextRequest) {
         entityId: claim.id,
         details: { claimNumber: claim.claimNumber, medicalAid: body.medicalAid },
       });
-
-      // Best-effort n8n automation trigger
-      try {
-        const base = integrationConfig.n8n.webhookBase || (integrationConfig.n8n.url ? `${integrationConfig.n8n.url}/webhook` : "");
-        if (base) {
-          await fetch(`${base}/insurance-claim-submitted`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ claimNumber: claim.claimNumber, medicalAid: body.medicalAid }),
-            signal: AbortSignal.timeout(4000),
-          });
-        }
-      } catch {
-        /* best-effort automation trigger */
-      }
 
       return NextResponse.json({ data: claim }, { status: 201 });
     } catch (error) {

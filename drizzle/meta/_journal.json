@@ -15,6 +15,13 @@
       "when": 1787748978747,
       "tag": "0001_outbox-and-indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787748978748,
+      "tag": "0002_native_auth",
+      "breakpoints": true
     }
   ]
 }

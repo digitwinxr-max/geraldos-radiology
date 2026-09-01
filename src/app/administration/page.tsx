@@ -404,7 +404,7 @@ export default function AdministrationPage() {
           <Card>
             <CardHeader>
               <CardTitle>Roles & Permissions</CardTitle>
-              <CardDescription>RBAC roles sourced from Keycloak realm & platform-defined roles</CardDescription>
+              <CardDescription>RBAC roles sourced from the staff registry & platform-defined roles</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">

@@ -12,10 +12,14 @@
 
 import { defineConfig } from "vitest/config";
 import path from "node:path";
-import { config as loadEnv } from "dotenv";
+import { existsSync } from "node:fs";
 
-// Load the integration environment (compose ports + credentials).
-loadEnv({ path: path.resolve(import.meta.dirname, ".env.integration") });
+// Load the integration environment (compose ports + credentials) using the
+// Node built-in loader — no dotenv dependency in the lean stack.
+const envFile = path.resolve(import.meta.dirname, ".env.integration");
+if (existsSync(envFile)) {
+  process.loadEnvFile(envFile);
+}
 
 export default defineConfig({
   resolve: {

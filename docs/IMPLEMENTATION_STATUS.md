@@ -23,8 +23,8 @@ This document details the exact implementation status of all major application m
 | **Inventory & Consumables** | `/inventory` (`src/app/inventory/page.tsx`) | `src/services/inventory-service.ts` | `GET/POST /api/inventory` | `inventory_items`, `inventory_transactions` | `__tests__/services/inventory-service.test.ts` |
 | **Finance & Billing** | `/finance` (`src/app/finance/page.tsx`) | `src/services/finance-service.ts`, `src/lib/finance.ts` | `GET/POST /api/invoices`<br>`GET/POST /api/payments`<br>`GET/POST /api/claims`<br>`GET /api/tariffs`<br>`GET /api/finance/analytics` | `invoices`, `invoice_line_items`, `payments`, `insurance_claims`, `tariffs`, `expenses` | `__tests__/services/finance-service.test.ts`, `__tests__/routes/finance-analytics.test.ts` |
 | **Administration & Staff** | `/administration` (`src/app/administration/page.tsx`) | `src/services/staff-service.ts` | `GET/POST /api/staff`<br>`GET/POST /api/branches`<br>`GET/POST /api/employees`<br>`GET /api/roles` | `staff`, `branches`, `employee_records`, `roles` | `__tests__/services/staff-service.test.ts` |
-| **Authentication & RBAC** | `/login` (`src/app/login/page.tsx`) | `src/lib/auth/*`, `src/lib/rbac.ts` | `GET /api/auth/login`<br>`GET /api/auth/callback`<br>`GET /api/auth/me`<br>`POST /api/auth/logout`<br>`POST /api/auth/dev` | `staff`, `roles` | `__tests__/routes/auth.test.ts`, `__tests__/lib/rbac-matrix.test.ts` |
-| **Integrations & Settings** | `/settings` (`src/app/settings/page.tsx`) | `src/lib/integrations/*` | `GET /api/integrations/status`<br>`GET /api/integrations/client-config`<br>`POST /api/n8n/trigger`<br>`POST /api/webhooks/n8n`<br>`GET /api/minio/*` | `system_settings`, `event_log` | `__tests__/routes/webhooks.test.ts` |
+| **Authentication & RBAC** | `/login` (`src/app/login/page.tsx`) | `src/lib/auth/*`, `src/lib/rbac.ts` | `POST /api/auth/login`<br>`GET /api/auth/me`<br>`GET /api/auth/logout`<br>`GET /api/auth/dev` | `staff` (scrypt hashes), `roles` | `__tests__/routes/auth.test.ts`, `__tests__/lib/rbac-matrix.test.ts` |
+| **Integrations & Settings** | `/settings` (`src/app/settings/page.tsx`) | `src/lib/integrations/*` | `GET /api/integrations/status`<br>`GET /api/integrations/client-config` | `system_settings`, `event_log` | `__tests__/routes/integrations-status.test.ts` |
 | **Platform Monitoring** | Container Probes | `src/lib/logger.ts`, `src/lib/metrics.ts` | `GET /api/health`<br>`GET /api/metrics` | None (in-memory & direct DB ping) | `__tests__/routes/health.test.ts`, `__tests__/routes/metrics-route.test.ts` |
 
 ---
@@ -41,12 +41,12 @@ No placeholder mocks or missing page stubs exist in the application routes.
 | Guarantee Under Test | Suite |
 |---|---|
 | Production secret enforcement / dev fallbacks (env.ts) | `__tests__/lib/env-secrets.test.ts` |
-| Fail-closed edge proxy policy (Keycloak configured / not configured / DEV_AUTH) | `__tests__/lib/proxy.test.ts` |
+| Fail-closed edge proxy policy (session / DEV_AUTH / production) | `__tests__/lib/proxy.test.ts` |
 | RBAC wildcard matrix + permission resolution | `__tests__/lib/rbac-matrix.test.ts` |
 | Session cookie flags, creation & verification | `__tests__/lib/session-cookies.test.ts` |
 | Real withAuth chain: CSRF → session → permission on `/api/staff` | `__tests__/routes/route-enforcement.test.ts` |
 | Radiologist-only report signing (fail closed on empty roles) | `__tests__/routes/report-signing.test.ts` |
-| n8n webhook shared-secret enforcement (401/503 fail-closed) | `__tests__/routes/webhook-secret.test.ts` |
+| Native auth login/me/dev/logout flows (scrypt + HS256 session) | `__tests__/routes/auth.test.ts` |
 | Session-bound AI review attribution (body identity ignored) | `__tests__/routes/ai-review-attribution.test.ts` |
 | DICOMweb proxy session gate + no wildcard CORS | `__tests__/routes/dicom-web-auth.test.ts` |
 | Decisions/knowledge/workstation-context require authentication | `__tests__/routes/previously-unauthed.test.ts` |

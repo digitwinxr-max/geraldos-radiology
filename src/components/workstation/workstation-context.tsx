@@ -23,9 +23,6 @@ export interface ClientConfig {
   ohifUrl: string;
   orthancUrl?: string | null;
   orthancProxyBase: string;
-  keycloakEnabled?: boolean;
-  fhirEnabled?: boolean;
-  dicoogleEnabled?: boolean;
 }
 
 export interface WorklistEntry {
@@ -107,7 +104,6 @@ export interface CaseContext {
   protocols: Record<string, unknown>[];
   similarCases: Record<string, unknown>[];
   teachingFiles: Record<string, unknown>[];
-  fhirLabSummary: string | null;
 }
 
 export interface Annotation {
