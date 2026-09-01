@@ -13,6 +13,7 @@ import {
   jsonb,
   serial,
   index,
+  unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -73,23 +74,32 @@ export const equipment = pgTable("equipment", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const staff = pgTable("staff", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  firstName: varchar("first_name", { length: 100 }).notNull(),
-  lastName: varchar("last_name", { length: 100 }).notNull(),
-  role: varchar("role", { length: 50 }).notNull(),
-  specialization: varchar("specialization", { length: 100 }),
-  email: varchar("email", { length: 255 }),
-  phone: varchar("phone", { length: 30 }),
-  /**
-   * scrypt password hash (format: scrypt$N$r$p$salt$key) for native
-   * authentication. Null for staff who have never been provisioned with a
-   * password — such staff cannot sign in (see src/lib/auth/native-auth.ts).
-   */
-  passwordHash: text("password_hash"),
-  status: varchar("status", { length: 20 }).default("active").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const staff = pgTable(
+  "staff",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    firstName: varchar("first_name", { length: 100 }).notNull(),
+    lastName: varchar("last_name", { length: 100 }).notNull(),
+    role: varchar("role", { length: 50 }).notNull(),
+    specialization: varchar("specialization", { length: 100 }),
+    email: varchar("email", { length: 255 }),
+    phone: varchar("phone", { length: 30 }),
+    /**
+     * scrypt password hash (format: scrypt$N$r$p$salt$key) for native
+     * authentication. Null for staff who have never been provisioned with a
+     * password — such staff cannot sign in (see src/lib/auth/native-auth.ts).
+     */
+    passwordHash: text("password_hash"),
+    status: varchar("status", { length: 20 }).default("active").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Unique email: staff identity for native auth. Null rows are exempt
+    // (multiple NULLs allowed in PostgreSQL), so staff without an email are
+    // unaffected. Enforced via migration 0003_staff_email_unique.
+    unique("staff_email_unique").on(t.email),
+  ],
+);
 
 export const appointments = pgTable(
   "appointments",

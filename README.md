@@ -59,13 +59,24 @@ docker compose up -d --build
 # 2. Configure the app
 cp .env.example .env          # edit endpoints/secrets
 
-# 3. Migrate + seed demo data (development only — seed refuses production)
-docker compose exec app node scripts/db-seed.mjs all
-# or against a local server: node scripts/db-seed.mjs migrate && node scripts/db-seed.mjs seed
+# 3. Apply the schema (host-side; the app container runs NODE_ENV=production
+#    and deliberately does not auto-migrate)
+npm run db:migrate            # or npm run db:push (dev)
 
-# 4. The app is now served on http://localhost:3000 (login with a seeded
-#    staff account, e.g. thato.ramotswe@gerald.co.bw / GeraldOS-Demo-2026!)
+# 4. Seed demo data (development only — the seed refuses NODE_ENV=production)
+npm run db:seed               # starts the app and POSTs /api/seed
+
+# 5. Create the production administrator (one-time, explicit)
+ADMIN_EMAIL=you@gerald.co.bw ADMIN_PASSWORD='<strong min-12-char password>' \
+  npm run db:bootstrap-admin
+
+# The app is served on http://localhost:3000. Demo login (after step 4):
+# thato.ramotswe@gerald.co.bw / GeraldOS-Demo-2026!
 ```
+
+Production (Render): the `render.yaml` Blueprint deploys GeraldOS + PostgreSQL
++ Orthanc + OHIF. Migrations run automatically via `preDeployCommand`; the
+administrator bootstrap is a one-time explicit step. See `docs/DEPLOYMENT.md`.
 
 Engineering commands (the same pipeline CI runs):
 
