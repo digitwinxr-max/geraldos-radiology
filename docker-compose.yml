@@ -47,7 +47,9 @@ services:
   # ─── Core: Orthanc PACS ──────────────────────────────────────────────────────
 
   orthanc:
-    image: orthancteam/orthanc:latest
+    build:
+      context: .
+      dockerfile: docker/orthanc/Dockerfile
     environment:
       ORTHANC__NAME: GeraldOS-PACS
       ORTHANC__DICOM_WEB__ENABLE: "true"
@@ -58,7 +60,6 @@ services:
     ports: ["8042:8042"]
     volumes:
       - orthancdata:/var/lib/orthanc/db
-      - ./docker/orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "-u", "orthanc:orthanc_secure_pass", "http://localhost:8042/system"]
       interval: 10s
@@ -70,10 +71,10 @@ services:
   # ─── Core: OHIF Viewer ───────────────────────────────────────────────────────
 
   ohif:
-    image: ohif/app:latest
+    build:
+      context: .
+      dockerfile: docker/ohif/Dockerfile
     ports: ["3001:80"]
-    volumes:
-      - ./ohif-config/app-config.js:/usr/share/nginx/html/app-config.js:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
       interval: 10s

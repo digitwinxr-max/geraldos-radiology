@@ -224,6 +224,27 @@ Executed on the session branch (all results as-of this document):
 
 ## REMAINING RISKS
 
+### Release blockers closed (follow-up fix)
+
+- CI install hardened: `.github/workflows/ci.yml` verify job now runs
+  `npm ci --force` (matches the Dockerfile deps stage) — the one-line fix for
+  the pinned optional esbuild platform packages.
+- Production admin bootstrap: `scripts/db-seed.mjs bootstrap-admin`
+  (ADMIN_EMAIL/ADMIN_PASSWORD env, min-12-char validation, native-auth scrypt
+  hash, role=administrator/status=active, idempotent upsert on
+  `staff_email_unique`). Migration `0003_staff_email_unique` adds the unique
+  email index (new migration, history untouched).
+- Render: `preDeployCommand: node scripts/db-seed.mjs migrate` runs migrations
+  before deploy (failure fails the deploy); the Docker image ships the deploy
+  toolchain (scripts + drizzle + drizzle-kit + pg) without the dev toolchain;
+  render.yaml now defines GeraldOS + PostgreSQL + private Orthanc + private
+  OHIF (persistent disk, internal networking, no public PACS exposure).
+- Docs corrected to commands that exist (`npm run db:migrate`,
+  `npm run db:seed`, `npm run db:bootstrap-admin`, `node scripts/db-seed.mjs
+  migrate`), and the first-deployment sequence is documented in
+  `docs/DEPLOYMENT.md` (database → migrations → bootstrap → GeraldOS →
+  Orthanc → OHIF → health → login → imaging).
+
 ### Fixed (this refactor)
 
 - Events were fan-out-before-durable (ADR-008 gap) → transactional PG outbox,

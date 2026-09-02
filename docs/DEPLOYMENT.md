@@ -1,130 +1,194 @@
 # GeraldOS Deployment & Operations Guide
 
-This document defines the containerised production deployment architecture, configuration parameters, container lifecycle, and backup/restore procedures for GeraldOS.
+This document defines the production deployment architecture, configuration
+parameters, and the exact first-deployment sequence for GeraldOS.
 
 ---
 
-## 1. Container Topology & Compose Architecture
+## 1. Architecture
 
-The platform runs as a Docker Compose bundle defined in `docker-compose.yml`:
+Lean production topology (no Redis, MinIO, Keycloak, Dicoogle, n8n, FHIR or
+LangGraph):
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                   Docker Compose Stack                 │
+│                   GeraldOS (Next.js)                   │
+│  app · PostgreSQL · Orthanc · OHIF                     │
 │                                                        │
-│  - app (Next.js 16 Standalone, port 3000)              │
-│  - postgres (PostgreSQL 16, port 5432)                 │
-│  - orthanc (Orthanc DICOM Server, port 8042)           │
-│  - ohif (OHIF Web Viewer, port 3001)                   │
-│                                                        │
-│  (No Keycloak, Redis, MinIO, FHIR, Dicoogle, n8n,      │
-│   LangGraph — all removed; see walkthrough.md)         │
+│  PostgreSQL  → authoritative store (staff, patients,   │
+│                workflow, reports, events, audit)       │
+│  Orthanc     → authoritative DICOM storage + DICOMweb  │
+│  OHIF        → web viewer (served through the GeraldOS │
+│                same-origin DICOMweb proxy)             │
 └────────────────────────────────────────────────────────┘
 ```
 
-The integration stack (`docker-compose.integration.yml`) runs PostgreSQL +
-Orthanc only for the live-infrastructure test gate.
+- **Docker Compose** (`docker-compose.yml`): app + postgres + orthanc + ohif —
+  for local/demo deployments.
+- **Render Blueprint** (`render.yaml`): GeraldOS web service + PostgreSQL +
+  private Orthanc + private OHIF — for production.
 
 ---
 
-## 2. Quick Start & Execution Commands
+## 2. First-deployment sequence
 
-### 2.1 Starting the Environment
+The exact sequence below is the production release path. Steps 1–5 are
+automatic on Render (Blueprint); the rest are explicit one-time operations.
+
+### 1. Database creation
+- **Compose**: `docker compose up -d postgres` creates the `geraldos` database.
+- **Render**: the Blueprint creates the managed `geraldos-db` PostgreSQL
+  instance automatically; `DATABASE_URL` is injected into the web service.
+
+### 2. Migrations
+- **Compose (host-side)**: `npm run db:push` (development) or
+  `npm run db:migrate` (applies `drizzle/*.sql` via drizzle-kit).
+- **Render (automatic)**: the web service's `preDeployCommand` runs
+  `node scripts/db-seed.mjs migrate` after the image build and BEFORE the new
+  version starts. Migration failure fails the deployment — the app never boots
+  against an unmigrated schema. The runtime image ships the migration assets
+  and drizzle-kit (deploy layer) so no host tooling is required.
+- **Manual (any environment)**: `node scripts/db-seed.mjs migrate`.
+
+### 3. Administrator bootstrap (one-time)
+The first administrator is created explicitly with:
+
 ```bash
-docker compose up -d --build
+ADMIN_EMAIL=you@gerald.co.bw ADMIN_PASSWORD='<strong min-12-char password>' \
+  node scripts/db-seed.mjs bootstrap-admin
 ```
 
-### 2.2 Database Initialization & Seeding
-```bash
-# Apply migrations + seed Botswana operational demo data (development only)
-docker compose exec app node scripts/db-seed.mjs all
+or `npm run db:bootstrap-admin`. Properties:
 
-# The seed refuses to run when NODE_ENV=production.
+- Credentials come from the environment only — never CLI args, never logged.
+- Password is hashed with the native-auth scrypt parameters
+  (`scrypt$16384$8$1$salt$key`, 16-byte salt, 64-byte key, timing-safe verify);
+  plaintext is never stored.
+- Upserts a single `role=administrator`, `status=active` staff row; the
+  `staff_email_unique` index (migration `0003_staff_email_unique`) makes it
+  idempotent — re-running refreshes the same row, never duplicates.
+- Refuses to run with missing/weak credentials (exit non-zero before any write).
+
+On Render, set `ADMIN_EMAIL` / `ADMIN_PASSWORD` as service env vars (Dashboard,
+secrets), then run the command from the service's **Render Shell** (one-time).
+It is NOT run on every deploy and demo data is never seeded automatically.
+
+### 4. GeraldOS deployment
+- **Compose**: `docker compose up -d --build` builds and starts the whole stack.
+- **Render**: the Blueprint web service builds the Docker image and starts
+  `node server.js` (Dockerfile CMD) with `NODE_ENV=production`,
+  `DATABASE_URL`, `AUTH_SECRET` (auto-generated), `PORT=3000`, `HOSTNAME=0.0.0.0`.
+
+### 5. Orthanc deployment/configuration
+- **Compose**: `docker compose up -d orthanc` (image built from
+  `docker/orthanc/Dockerfile`, persistent volume `orthancdata`).
+- **Render**: a PRIVATE service (`geraldos-orthanc`, no public URL) built from
+  `docker/orthanc/Dockerfile` with a 10 GB persistent disk mounted at
+  `/var/lib/orthanc/db`.
+- Configuration (both): Orthanc env vars — `ORTHANC__NAME`,
+  `ORTHANC__DICOM_WEB__ENABLE=true`, `ORTHANC__AUTHENTICATION_ENABLED=true`,
+  `ORTHANC__PLUGINS` (DICOMweb plugin), and `ORTHANC__REGISTERED_USERS`
+  `{"orthanc":"<strong-password>"}`. The GeraldOS web service must be wired
+  with the SAME credentials: `ORTHANC_URL`, `ORTHANC_USERNAME=orthanc`,
+  `ORTHANC_PASSWORD` (Render injects `ORTHANC_URL` from the private service's
+  internal `hostport`).
+
+### 6. OHIF deployment/configuration
+- **Compose**: `docker compose up -d ohif` (image built from
+  `docker/ohif/Dockerfile`; served at http://localhost:3001).
+- **Render**: a separate web service (`geraldos-ohif`) built from
+  `docker/ohif/Dockerfile` — browser-reachable so the viewer can actually be
+  loaded. The OHIF image listens on `$PORT` (Render injects it). GeraldOS gets
+  `OHIF_URL` from the OHIF service's internal `hostport` (server-side health
+  checks) and `OHIF_PUBLIC_URL` should be set to the OHIF service's public
+  onrender.com URL.
+- Configuration: the viewer data source points at the GeraldOS **same-origin
+  DICOMweb proxy** (`/api/orthanc/dicom-web`, WADO-URI, QIDO-RS, STOW-RS) via
+  `ohif-config/app-config.js` — the browser never talks to Orthanc directly,
+  so no CORS configuration is required and Orthanc credentials never leave the
+  server. Cross-origin embedding from a separate public origin is subject to
+  the SameSite=Lax cookie model (see §6 — Identity & viewer topology notes):
+  the fully embedded viewer
+  authenticates only when OHIF is served from the same origin as GeraldOS
+  (reverse-proxy co-location); the imaging page's same-origin series
+  inspection works in every topology.
+
+### 7. Health verification
+- `GET /api/health` — public probe; returns `200 {"status":"healthy"}` when the
+  DB is reachable, `503 {"status":"unhealthy"}` otherwise (Render readiness).
+- `GET /api/integrations/status` — authenticated; reports `connected` /
+  `unreachable` / `not_configured` for Orthanc and OHIF with latency.
+
+### 8. Administrator login
+- Open the app, sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from step 3.
+- Verify: `GET /api/auth/me` returns the session user with
+  `roles: ["administrator"]`; `GET /api/staff` returns 200 (admin permission).
+
+### 9. Imaging verification
+- Register a patient (reception), create a workflow study, upload a DICOM file
+  at `/api/orthanc/upload` (or via DICOM push to Orthanc), confirm the study
+  reconciles into the worklist, and open the OHIF viewer deep link
+  (`${OHIF_PUBLIC_URL}/viewer?StudyInstanceUIDs=<uid>` or, on Render, the
+  same-origin viewer through the GeraldOS proxy).
+
+---
+
+## 3. Environment configuration
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `NODE_ENV` | Yes | `production` for production builds. |
+| `DATABASE_URL` | Yes | PostgreSQL connection string. |
+| `AUTH_SECRET` | Yes | HS256 session signing secret (≥32 random bytes; dev default rejected in production). |
+| `PUBLIC_APP_URL` | Prod | Browser-facing origin (Render). |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Bootstrap | One-time first administrator (secrets; see step 3). |
+| `ORTHANC_URL` / `ORTHANC_USERNAME` / `ORTHANC_PASSWORD` | Imaging | Orthanc REST credentials (server-side only). |
+| `OHIF_URL` / `OHIF_PUBLIC_URL` | Imaging | OHIF server health target / browser-facing viewer origin. |
+| `DEV_AUTH` | Dev | Opt-in dev admin login (never in production). |
+| `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error`. |
+
+---
+
+## 4. Container build (`Dockerfile`)
+
+Multi-stage build:
+1. `deps` — `npm ci --force` (skips the npm 10 optional-platform check that
+   rejects the pinned `@esbuild/aix-ppc64` package on linux-x64; never
+   `--omit=optional`).
+2. `builder` — `next build` standalone.
+3. `deploy` — copies ONLY the migration/bootstrap toolchain (scripts, `drizzle/`,
+   `drizzle.config.ts`, drizzle-kit + its runtime deps, pg).
+4. `runner` — non-root `nextjs`; standalone server + static assets + deploy
+   toolchain. `CMD ["node","server.js"]`.
+
+---
+
+## 5. Backup & recovery
+
+```bash
+# Backup
+docker exec -t geraldos-postgres-1 pg_dump -U geraldos_admin -d geraldos -Fc \
+  > geraldos_backup_$(date +%Y%m%d_%H%M%S).dump
+
+# Restore
+docker exec -i geraldos-postgres-1 pg_restore -U geraldos_admin -d geraldos \
+  --clean --if-exists < geraldos_backup.dump
 ```
 
----
-
-## 3. Environment Configuration (`.env`)
-
-| Variable | Required | Default / Example | Purpose |
-|---|---|---|---|
-| `NODE_ENV` | Yes | `production` | Enables production optimisations and strict security checks. |
-| `DATABASE_URL` | Yes | `postgresql://geraldos_admin:geraldos_secure_pass@postgres:5432/geraldos` | PostgreSQL connection pool string. |
-| `AUTH_SECRET` | Yes | `[32+ byte random base64]` | HS256 JWT cookie signing secret (must NOT match dev default in production). |
-| `DEV_AUTH` | No | `false` | Enables local dev admin login (`/api/auth/dev`). Strictly rejected in production. |
-| `ORTHANC_URL` | Optional | `http://orthanc:8042` | Orthanc PACS REST URL (server-side only). |
-| `ORTHANC_USERNAME` | Optional | `orthanc` | Orthanc HTTP basic auth user. |
-| `ORTHANC_PASSWORD` | Optional | `orthanc_secure_pass` | Orthanc HTTP basic auth password. Never leaves the server. |
-| `OHIF_URL` | Optional | `http://ohif:80` | OHIF container URL used for server-side health checks. |
-| `OHIF_PUBLIC_URL` | Optional | `http://localhost:3001` | Browser-reachable OHIF origin exposed to the workstation iframe and CSP `frame-src`. Set this when `OHIF_URL` is only resolvable inside the Docker network. See §7 for the cookie-model constraint on cross-origin viewers. |
-| `LOG_LEVEL` | No | `info` (`debug`, `info`, `warn`, `error`) | Application log verbosity. |
-
-The platform requires no other secrets: authentication is native (PostgreSQL
-staff records + `AUTH_SECRET` sessions) and DICOM storage is Orthanc's.
+On Render, use the managed Postgres backup feature (point-in-time restore).
 
 ---
 
-## 4. Production Container Build (`Dockerfile`)
+## 6. Identity & viewer topology notes
 
-The `Dockerfile` employs a multi-stage build:
-1. `deps`: Installs production and build dependencies via `npm ci --force`
-   (the `--force` flag tolerates an optional esbuild platform package that
-   npm rejects on some runner architectures).
-2. `builder`: Compiles the Next.js standalone server (`npm run build`).
-3. `runner`: Minimal runtime with non-root user `nextjs` (UID 1001), copying
-   only `.next/standalone`, `.next/static`, and `public/`; `CMD ["node","server.js"]`.
-
----
-
-## 5. Health Checks & Monitoring
-
-- **Container Liveness Probe**:
-  ```bash
-  wget -qO- http://localhost:3000/api/health || exit 1
-  ```
-  Returns `200 OK` with database ping latency, uptime, and memory usage.
-- **Metrics Scraping**:
-  ```bash
-  curl http://localhost:3000/api/metrics
-  ```
-  Returns request counters, response code distribution, and latency buckets.
-
----
-
-## 6. Backup & Recovery Procedures
-
-### 6.1 Database Backup
-```bash
-# Export compressed PostgreSQL dump
-docker exec -t geraldos-postgres-1 pg_dump -U geraldos_admin -d geraldos -Fc > geraldos_backup_$(date +%Y%m%d_%H%M%S).dump
-```
-
-### 6.2 Database Restore
-```bash
-# Restore dump into PostgreSQL
-docker exec -i geraldos-postgres-1 pg_restore -U geraldos_admin -d geraldos --clean --if-exists < geraldos_backup.dump
-```
-
-PostgreSQL is the single source of truth for clinical and operational state;
-backing it up backs up the platform.
-
----
-
-## 7. Identity & Viewer Topology Requirements
-
-### 7.1 Identity (native)
-Authentication is native to GeraldOS: staff rows in PostgreSQL carry scrypt
-password hashes (`staff.password_hash`), and successful login issues an HS256
-session cookie signed with `AUTH_SECRET`. Provision passwords via the staff
-administration flow or the development seed; there is no external identity
-provider to configure. Rotate `AUTH_SECRET` to invalidate every session.
-
-### 7.2 Embedded OHIF viewer (cookie model constraint)
-The workstation embeds OHIF from `OHIF_PUBLIC_URL`. Because the GeraldOS session
-cookie is `SameSite=Lax`, an OHIF instance served from a DIFFERENT origin cannot
-attach the session cookie when calling `/api/orthanc/dicom-web` — the browser
-withholds it on cross-site XHR by design. Deployments that want the embedded
-full viewer must serve OHIF from the SAME public origin as GeraldOS (reverse
-proxy co-location, e.g. Traefik routing `/viewer/*` → ohif built with
-`PUBLIC_URL=/viewer/`). Otherwise use the imaging page's same-origin series
-inspection, which works through `/api/orthanc/proxy` with normal auth.
+- **Identity**: native — staff rows in PostgreSQL carry scrypt password hashes;
+  sessions are HS256 JWTs signed with `AUTH_SECRET`. Rotate `AUTH_SECRET` to
+  invalidate every session.
+- **OHIF cookie model**: the session cookie is `SameSite=Lax`. The viewer's
+  data source always points at the GeraldOS DICOMweb proxy
+  (`/api/orthanc/dicom-web`). When OHIF is served from a different public
+  origin than GeraldOS, the browser withholds the session cookie on
+  cross-site XHR, so the fully embedded viewer authenticates only when OHIF is
+  co-located behind the same origin as GeraldOS (reverse-proxy co-location,
+  e.g. routing `/viewer/*` → OHIF). The imaging page's same-origin series
+  inspection (`/api/orthanc/proxy`) works in every topology.
