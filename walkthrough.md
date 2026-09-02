@@ -243,9 +243,9 @@ Executed on the session branch (all results as-of this document):
   initial hashes come from the dev seed or direct SQL. Required before a
   production rollout can onboard staff.
 - `docs/` history (ADRs, KNOWN_ISSUES) intentionally documents the removed
-  stack for auditability; `.qoder/repowiki/` (156 tracked files) is a stale
-  auto-generated workspace wiki describing the old architecture — regenerate or
-  archive it; it was left untouched by design.
+  stack for auditability. The auto-generated workspace wiki
+  `.qoder/repowiki/` was a stale cache describing the old architecture; it
+  has been removed and `.qoder/` is now ignored.
 
 ### Known
 

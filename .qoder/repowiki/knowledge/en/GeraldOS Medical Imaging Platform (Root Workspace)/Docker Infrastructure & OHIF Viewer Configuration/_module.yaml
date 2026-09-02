@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: infra_docker
-title: Docker Infrastructure & OHIF Viewer Configuration
-scope:
-    - docker/
-    - ohif-config/
-source_files: []
-depends_on: []
-related_to: []

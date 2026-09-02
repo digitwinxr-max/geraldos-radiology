@@ -1,1 +1,0 @@
-Orthanc PACS with PostgreSQL indexing/storage plugins, Dicoogle DICOM server (Lucene + file storage), PostgreSQL 15+ (UUID v4 via `gen_random_uuid()`, JSONB for analytics), and OHIF Viewer configured as a DICOMweb client.

@@ -19,6 +19,9 @@ out/
 *.db-wal
 *.db-shm
 
+# AI assistant / IDE caches (auto-generated knowledge bases — not source code)
+.qoder/
+
 # Test / build artifacts
 coverage/
 .driz-mig/

@@ -1,1 +1,0 @@
-Schema evolution is driven by Drizzle's migration tooling: new changes are generated via `drizzle-kit generate` and applied with `drizzle-kit migrate`, which reads `meta/_journal.json` and executes the numbered `.sql` files in order.

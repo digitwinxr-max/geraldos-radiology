@@ -1,1 +1,0 @@
-Drizzle ORM migrations against PostgreSQL; uses UUIDs (`gen_random_uuid()`) as primary keys, `jsonb` columns for flexible payloads (bounding boxes, tags, permissions), and standard `timestamp`/`date`/`numeric` types.

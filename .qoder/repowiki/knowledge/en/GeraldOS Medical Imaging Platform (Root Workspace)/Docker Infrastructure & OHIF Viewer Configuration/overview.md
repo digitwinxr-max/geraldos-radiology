@@ -1,1 +1,0 @@
-Provides containerized service configurations for GeraldOS — Orthanc PACS, Dicoogle DICOM server, PostgreSQL schemas, and the OHIF viewer's DICOMweb data source wiring.

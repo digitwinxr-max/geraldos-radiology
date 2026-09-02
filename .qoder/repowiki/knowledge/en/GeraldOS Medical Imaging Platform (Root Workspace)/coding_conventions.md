@@ -1,3 +1,0 @@
-- All service endpoints and credentials are injected via environment variables loaded from `.env.example` rather than hard-coded constants.
-- Database access is exclusively through Drizzle ORM models defined in the `database_schema` child, used by both frontend server actions and backend endpoints.
-- External integrations (PACS, FHIR, storage, auth) are abstracted behind mock implementations in `services_runtime` so unit tests can run without live infrastructure.

@@ -1,1 +1,0 @@
-Vitest test runner with `vi.mock` for dependency isolation; tests import production code through the project's `@/` path alias configured elsewhere in the workspace.

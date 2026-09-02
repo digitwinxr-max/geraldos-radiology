@@ -1,5 +1,0 @@
-- Each service is started only if its health endpoint is not yet reachable, using a port-poll loop before launching the process.
-- In-memory Node.js mock servers expose a single `http.createServer` listener that dispatches on `req.url.pathname` to handle multiple endpoints (discovery, auth, token, resource CRUD).
-- Service logs are written to `/tmp/<service>.log` and stdout/stderr are captured via `&>` redirection when spawning background processes.
-- Environment-specific configuration (realm name, client IDs, ports, credentials) is declared as top-level constants in each `.mjs` mock rather than read from files.
-- The LangGraph agent graph is built declaratively by iterating over a list of `(name, handler)` pairs to register nodes and edges.

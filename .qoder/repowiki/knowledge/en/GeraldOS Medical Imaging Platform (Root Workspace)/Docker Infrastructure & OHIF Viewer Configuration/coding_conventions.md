@@ -1,4 +1,0 @@
-- Each backend service lives in its own top-level directory under `docker/` with a single declarative config file named after the service (e.g. `orthanc.json`, `dicoogle.properties`).
-- PostgreSQL objects are created idempotently using `IF NOT EXISTS` on both schemas and tables so the init script can be re-run safely during container recreation.
-- Domain data is partitioned into separate PostgreSQL schemas per bounded context (`auth`, `patient`, `scheduling`, etc.) rather than flat tables, and all primary keys use UUID with `gen_random_uuid()` defaults.
-- OHIF viewer configuration is expressed as a plain `window.config` object with `extensions` and `modes` explicitly set to empty arrays to avoid breaking the standalone bundle boot.

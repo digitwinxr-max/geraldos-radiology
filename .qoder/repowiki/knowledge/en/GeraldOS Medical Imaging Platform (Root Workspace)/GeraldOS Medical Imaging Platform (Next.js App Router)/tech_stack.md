@@ -1,1 +1,0 @@
-Next.js App Router with TypeScript; Drizzle ORM + pg-core for PostgreSQL schema definition; @tanstack/react-query for client-side data fetching; UUID-based identifiers throughout; OIDC authentication via Keycloak (discovery + authorization URL flow); JSONB columns used extensively for flexible payloads (permissions, tags, bounding boxes, rule results, system settings).

@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: services_runtime
-title: GeraldOS Integration Services & Runtime Bootstrap
-scope:
-    - services/
-    - scripts/
-source_files: []
-depends_on: []
-related_to: []

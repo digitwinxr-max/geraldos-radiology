@@ -1,1 +1,0 @@
-Next.js 16 App Router + React 19 frontend, FastAPI + LangGraph multi-agent backend, PostgreSQL with Drizzle ORM migrations, Redis for caching/events, and a Docker Compose bundle of Orthanc PACS, HAPI FHIR, Keycloak, MinIO, Dicoogle, n8n, and OHIF viewer.

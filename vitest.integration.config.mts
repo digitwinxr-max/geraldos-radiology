@@ -28,8 +28,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["__integration__/**/*.test.ts"],
-    // Full OIDC browser-flow simulation is inherently slow; the login helper's
-    // 429 backoff (rate-limit respectful) can stretch a beforeAll past a minute.
+    // The native-login helper backs off on rate-limit (429) responses so a
+    // multi-user beforeAll can stretch past a minute under load.
     testTimeout: 60_000,
     hookTimeout: 180_000,
     fileParallelism: false,

@@ -1,1 +1,0 @@
-Next.js App Router frontend and API layer for a medical diagnostic imaging operations platform, providing patient scheduling, radiology workflow, AI-assisted reporting, finance, inventory, and multi-agent command centre features.
