@@ -12,6 +12,5 @@ docker/
 dicom-samples/
 __tests__/
 coverage/
-drizzle/
 *.md
 .qoder

@@ -61,7 +61,7 @@ services:
     volumes:
       - orthancdata:/var/lib/orthanc/db
     healthcheck:
-      test: ["CMD", "curl", "-f", "-u", "orthanc:orthanc_secure_pass", "http://localhost:8042/system"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,base64;req=urllib.request.Request('http://localhost:8042/system');req.add_header('Authorization','Basic '+base64.b64encode(b'orthanc:orthanc_secure_pass').decode());urllib.request.urlopen(req,timeout=3).read()\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
