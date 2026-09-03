@@ -108,7 +108,7 @@ diagnostic history with their remediation recorded.
 
 ## OPEN
 
-### O-1. Embedded OHIF viewer requires same-origin topology (P2)
+### O-1. Embedded OHIF viewer requires same-origin topology (P2) — RESOLVED
 
 The workstation embeds OHIF via iframe from `OHIF_PUBLIC_URL` while the session
 cookie is `SameSite=Lax`. Cross-origin XHR from the OHIF iframe to the GeraldOS
@@ -117,7 +117,14 @@ DICOMweb proxy therefore cannot carry the session cookie, so the stock
 from a different port/origin. This is a browser cookie-model constraint, not a
 code bug.
 
-**Workarounds (in order of preference)**:
+**RESOLVED (2026-09-03)**: OHIF is now mounted at `/viewer` on the app
+origin by the in-container edge proxy (`scripts/edge-proxy.mjs`; `ohif-config` →
+`routerBasename: '/viewer'`; OHIF is a private service with no public URL). The
+embedded viewer is same-origin and fully authenticated — the cookie flows on every
+DICOMweb call. Verified end-to-end (login → viewer shell → QIDO-RS →
+WADO-RS) by `scripts/e2e-imaging-check.mjs` (24/24).
+
+**Legacy context (superseded)**:
 
 1. Deploy OHIF behind the same public origin as GeraldOS (reverse proxy
    co-location, e.g. Traefik/nginx routing `/` → app and `/viewer` → OHIF built

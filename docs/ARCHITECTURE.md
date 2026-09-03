@@ -53,7 +53,8 @@ GeraldOS is an AI-native Diagnostic Imaging Operations Orchestration Platform en
 ### 1.4 Persistence & External Integration Layer
 - **Primary Database**: PostgreSQL 16 managed via Drizzle ORM (`src/db/schema.ts`) — the authoritative store for staff, patients, referrals, scheduling, workflow, reports, billing, events and audit.
 - **PACS / DICOM Engine**: Orthanc DICOM server — authoritative for DICOM objects — proxied server-side via `/api/orthanc/*`; uploads at `/api/orthanc/upload`; DICOMweb via `/api/orthanc/dicom-web`.
-- **Viewer**: OHIF Web Viewer deep-linked from study rows (`OHIF_URL`/`OHIF_PUBLIC_URL`).
+- **Viewer**: OHIF Web Viewer mounted same-origin at `/viewer` by the app edge
+  proxy (`scripts/edge-proxy.mjs`; deep links `${PUBLIC_APP_URL}/viewer/viewer?StudyInstanceUIDs=<uid>`).
 
 ---
 

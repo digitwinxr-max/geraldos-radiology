@@ -36,7 +36,7 @@ This document establishes the authoritative source files, consumer relationships
 |---|---|---|
 | **Identity & Sessions** | Native: PostgreSQL `staff` + scrypt hashes + HS256 session (`src/lib/auth/*`) | No external identity provider. Dev bypass (`/api/auth/dev`) is strictly disabled in production. |
 | **PACS / DICOM Engine** | Orthanc Docker container (`orthancteam/orthanc`, `docker/orthanc/orthanc.json`) | Proxied via `/api/orthanc/*` so PACS credentials remain server-side. |
-| **Viewer** | OHIF (`OHIF_URL` / `OHIF_PUBLIC_URL`) | Deep links from study rows: `${OHIF_URL}/viewer?StudyInstanceUIDs=<uid>`. |
+| **Viewer** | OHIF (mounted at `/viewer` by `scripts/edge-proxy.mjs`; no public URL) | Deep links from study rows: `${PUBLIC_APP_URL}/viewer/viewer?StudyInstanceUIDs=<uid>`. |
 | **Event Bus** | PostgreSQL `event_log` (transactional outbox + SSE cursor) | No broker. `publish_attempts`/`last_publish_error` retained as legacy audit columns. |
 | **Storage Engine** | Orthanc is authoritative for DICOM objects | No object-store layer. |
 | **AI Agent Runtime** | In-app live-data agents (`src/lib/agents.ts`) on PostgreSQL | AI is assistive; Decision Engine gates execution; radiologist signs. |
