@@ -13,6 +13,13 @@ function required(name: string): string {
 
 export const env = {
   appUrl: process.env.IT_APP_URL ?? "http://localhost:3000",
+  /**
+   * Direct address of the OHIF container. The app serves the viewer at
+   * `/viewer` on its own origin, so the suite compares proxied responses
+   * against the upstream's own — that is what proves the rewrite set covers
+   * every path the real bundle asks for, without hardcoding its build output.
+   */
+  ohifUrl: process.env.OHIF_URL ?? "http://localhost:53001",
   orthancUrl: required("ORTHANC_URL"),
   orthancUsername: process.env.ORTHANC_USERNAME ?? "orthanc",
   orthancPassword: required("ORTHANC_PASSWORD"),

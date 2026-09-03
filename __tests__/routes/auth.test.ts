@@ -241,4 +241,25 @@ describe("GET /api/auth/logout", () => {
     const cookies = cookiesOf(res);
     expect(cookies.join(";")).toContain("geraldos_session=;");
   });
+
+  it("redirects to the browser-facing origin on Render, not the container bind address", async () => {
+    // Regression: `nextUrl.origin` behind Render's router is
+    // `https://0.0.0.0:3000`, so logout used to send the browser to a
+    // non-routable address and sign-out was effectively broken in production.
+    const res = await logoutGet(
+      new NextRequest("https://0.0.0.0:3000/api/auth/logout", {
+        headers: {
+          cookie: "geraldos_session=session-token-123",
+          host: "geraldos-radiology.onrender.com",
+          "x-forwarded-proto": "https",
+        },
+      }),
+    );
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://geraldos-radiology.onrender.com/login?signed_out=1",
+    );
+    expect(res.headers.get("location")).not.toContain("0.0.0.0");
+  });
 });

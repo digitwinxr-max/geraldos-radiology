@@ -13,11 +13,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: { code: "NOT_CONFIGURED", message: "Orthanc is not configured (ORTHANC_URL)" } }, { status: 503 });
     }
     const p = request.nextUrl.searchParams.get("p") ?? "";
-    if (!p || p.startsWith("/") || p.includes("//") || p.includes("?")) {
+    // `..` must be rejected explicitly: fetch() normalises the URL it is given,
+    // so `p=studies/../../system` would otherwise resolve to `/system` and let
+    // the query reach Orthanc paths outside the intended namespace. Same rule
+    // as the DICOMweb and viewer proxies.
+    const segments = p.split("/");
+    if (
+      !p ||
+      p.startsWith("/") ||
+      p.includes("//") ||
+      p.includes("?") ||
+      p.includes("\\") ||
+      segments.some((seg) => seg.includes(".."))
+    ) {
       return apiError("VALIDATION_FAILED", "Invalid proxy path", 400);
     }
-    const segments = p.split("/").map(encodeURIComponent).join("/");
-    const upstream = `${url.replace(/\/$/, "")}/${segments}`;
+    const encoded = segments.map(encodeURIComponent).join("/");
+    const upstream = `${url.replace(/\/$/, "")}/${encoded}`;
 
     try {
       const res = await timedFetch(upstream, { headers: { ...orthancAuthHeader() } }, 15000);

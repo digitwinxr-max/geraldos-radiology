@@ -135,8 +135,10 @@ export function ViewerPanel() {
   // ─── OHIF message listener ───
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Only handle messages from OHIF
-      if (config?.ohifUrl && !event.origin.startsWith(config.ohifUrl.replace(/\/$/, ""))) {
+      // The viewer is mounted on this same origin (OHIF_MOUNT_PREFIX), so a
+      // message is only trusted when it comes from our own origin. config.ohifUrl
+      // is a path prefix — it must never be compared against event.origin.
+      if (event.origin !== window.location.origin) {
         return;
       }
 
@@ -169,7 +171,7 @@ export function ViewerPanel() {
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [config?.ohifUrl, series]);
+  }, [series]);
 
   // ─── Loading timeout ───
   useEffect(() => {
@@ -195,7 +197,8 @@ export function ViewerPanel() {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(
           { type: "ohif-load-study", StudyInstanceUID: currentUid },
-          config.ohifUrl
+          // Same-origin viewer: pin the target to our own origin.
+          window.location.origin
         );
       }
     }
@@ -387,23 +390,21 @@ export function ViewerPanel() {
           ) : "Standalone preview"}
         </span>
 
-        {/* Orthanc Explorer button */}
-        {config?.orthancUrl ? (
+        {/* Study list — same-origin OHIF mount, reachable only when signed in.
+            Orthanc's own UI is deliberately not exposed: the PACS is a private
+            service and every image request is authorised through GeraldOS. */}
+        {config?.ohifUrl ? (
           <a
-            href={config.orthancUrl}
+            href={config.ohifUrl}
             target="_blank"
             rel="noopener noreferrer"
-            title="Open Orthanc Explorer in new tab"
+            title="Open the OHIF study list"
             className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
           >
             <ExternalLink className="h-3 w-3" />
-            <span className="hidden xl:inline">Orthanc</span>
+            <span className="hidden xl:inline">Study list</span>
           </a>
-        ) : (
-          <span className="flex items-center gap-1 rounded-md border border-slate-800 px-1.5 py-0.5 text-[9px] text-slate-600">
-            <ExternalLink className="h-3 w-3" /> Orthanc offline
-          </span>
-        )}
+        ) : null}
 
         {/* Fullscreen */}
         <button onClick={toggleFullscreen} title="Fullscreen (F11)" className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200">
@@ -571,8 +572,8 @@ export function ViewerPanel() {
                         <p className="text-[11px] text-slate-400 mt-1">{ohifError ?? "Failed to load the DICOM viewer"}</p>
                       </div>
                       <div className="text-[10px] text-slate-500 space-y-1">
-                        <p>Check that OHIF is running at: {config?.ohifUrl}</p>
-                        <p>Check that Orthanc DICOMweb is accessible at: {config?.orthancUrl}</p>
+                        <p>Viewer mount: {config?.ohifUrl ?? "/viewer"} (proxied by GeraldOS)</p>
+                        <p>DICOMweb endpoint: /api/orthanc/dicom-web</p>
                       </div>
                       <button
                         onClick={() => {

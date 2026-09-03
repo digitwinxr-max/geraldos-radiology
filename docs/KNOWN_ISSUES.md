@@ -108,24 +108,40 @@ diagnostic history with their remediation recorded.
 
 ## OPEN
 
-### O-1. Embedded OHIF viewer requires same-origin topology (P2)
+### O-1. Embedded OHIF viewer requires same-origin topology (P2) — RESOLVED
 
-The workstation embeds OHIF via iframe from `OHIF_PUBLIC_URL` while the session
-cookie is `SameSite=Lax`. Cross-origin XHR from the OHIF iframe to the GeraldOS
-DICOMweb proxy therefore cannot carry the session cookie, so the stock
-`ohif/app:latest` container cannot authenticate against `/api/orthanc/dicom-web`
-from a different port/origin. This is a browser cookie-model constraint, not a
-code bug.
+The workstation embeds OHIF in an iframe while the session cookie is
+`SameSite=Lax`. Cross-origin XHR from an OHIF iframe on a *different* origin
+cannot carry that cookie, so a stock viewer container on its own host/port could
+never authenticate against `/api/orthanc/dicom-web`. On Render this is worse than
+a mere cross-origin problem: `onrender.com` is on the **Public Suffix List**, so
+`geraldos-radiology.onrender.com` and `geraldos-ohif.onrender.com` are
+cross-*site*, and no cookie scope or `SameSite=None` relaxation can fix it
+without weakening authentication for every user.
 
-**Workarounds (in order of preference)**:
+**Resolution (implemented)**: OHIF is now served from the app's own origin.
+Next.js reverse-proxies it at `/viewer` (`next.config.ts` rewrites →
+`src/app/api/ohif/[[...path]]/route.ts`), `ohif-config/app-config.js` sets
+`routerBasename: '/viewer'`, and the Render service became a private `pserv`.
+Everything the viewer requests — its shell, its assets and its DICOMweb calls —
+is same-origin, so the session cookie flows with no CORS and no cookie-policy
+relaxation. `OHIF_PUBLIC_URL` was removed as dead configuration. See
+ADR-015 and DEPLOYMENT.md §6.
 
-1. Deploy OHIF behind the same public origin as GeraldOS (reverse proxy
-   co-location, e.g. Traefik/nginx routing `/` → app and `/viewer` → OHIF built
-   with matching `PUBLIC_URL`). Everything is then same-origin and works today.
-2. Use the imaging page's same-origin series inspection (works fully — it goes
-   through `/api/orthanc/proxy` with `withAuth`).
+### O-1b. The proxied viewer namespace carries no script CSP (P3)
 
-The imaging page's thumbnails/preview flow is unaffected. See DEPLOYMENT.md.
+`/viewer` responses get `frame-ancestors 'self'`, `object-src 'none'`,
+`base-uri 'self'`, `X-Frame-Options: SAMEORIGIN` and `nosniff` — but **not** the
+app's `script-src`/`worker-src` policy. OHIF is a third-party SPA that needs web
+workers, `wasm-unsafe-eval` and `blob:` URLs for the Cornerstone codecs; the
+exact directive set varies by viewer version and cannot be validated without a
+real browser, so a guessed policy risks a silently broken viewer.
+
+**Mitigations in place**: the namespace is authenticated, the upstream service is
+private, the image is pinned (`ohif/app:v3.12.13`), and framing is restricted to
+this origin. **Follow-up**: once the deployed viewer can be exercised in a
+browser, tighten the policy in `next.config.ts → viewerHeaders()` to the narrowest
+CSP that still loads a study.
 
 ### O-2. Transactional outbox not yet implemented (P2) — FIXED
 

@@ -23,6 +23,7 @@ Fixed ports on localhost:
 | --------- | ----- | --------------------------------------- |
 | PostgreSQL| 55432 | db `geraldos`, user `geraldos_admin`    |
 | Orthanc   | 58042 | user `orthanc`                          |
+| OHIF      | 53001 | proxied by the app at `/viewer`         |
 
 Apply the schema:
 
@@ -41,6 +42,7 @@ set AUTH_SECRET=it-integration-secret-not-for-production-use
 set ORTHANC_URL=http://127.0.0.1:58042
 set ORTHANC_USERNAME=orthanc
 set ORTHANC_PASSWORD=it_orthanc_pass
+set OHIF_URL=http://127.0.0.1:53001
 
 npm run build && npm run start   # port 3000
 ```
@@ -60,7 +62,7 @@ the variable before running.
 | Suite                | Proof |
 | -------------------- | ----- |
 | `auth.test.ts`       | Anonymous 401s, login redirect, **native staff login** (`POST /api/auth/login` → scrypt verify → HS256 session) with roles bound into the session, wrong-password rejection, forged-token rejection, RBAC allow/deny per role, AI-safety fail-closed report signing, CSRF rejection of cross-origin mutations. |
-| `imaging.test.ts`    | Authenticated DICOM upload into real Orthanc via the app proxy, DICOMweb session gating (no CORS wildcard), study aggregation reconciliation, and the workflow state machine walk referral → sent_to_orthanc guarded by a REAL Orthanc StudyInstanceUID. |
+| `imaging.test.ts`    | Authenticated DICOM upload into real Orthanc via the app proxy, DICOMweb session gating (no CORS wildcard), study aggregation reconciliation, and the workflow state machine walk referral → sent_to_orthanc guarded by a REAL Orthanc StudyInstanceUID. Also proves the **same-origin viewer mount** against the real `ohif/app` image: anonymous visitors are refused, `/viewer` serves the shell with `frame-ancestors 'self'`, and every root-level asset the shell references is fetched twice — through the app and straight from the container — and must agree, so a missing rewrite shows up immediately. |
 | `events.test.ts`     | PostgreSQL-native bus end-to-end: durable `event_log` row with correlation id → ordered reads via the API; no secondary fan-out store exists. |
 | `concurrency.test.ts`| N simultaneous same-stage workflow transitions produce exactly ONE application, no double audit rows, and a consistent final stage (optimistic-concurrency guard). |
 | `resilience.test.ts` | Chaos contract: PostgreSQL down → fail-safe structured errors + health truth + full recovery; new logins fail closed while the DB is down while existing HS256 sessions stay valid; Orthanc down → no silent imaging success; forced outbox replay never duplicates durable effects. |

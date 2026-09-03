@@ -37,13 +37,21 @@ function isPassThrough(res: Response): boolean {
 }
 
 describe("public routes", () => {
-  it.each(["/login", "/api/health", "/api/metrics", "/api/auth/login", "/api/auth/me", "/_next/static/x"])(
-    "passes %s through unconditionally",
-    async (path) => {
-      const res = await proxy(req(path));
-      expect(isPassThrough(res)).toBe(true);
-    },
-  );
+  it.each([
+    "/login",
+    "/api/health",
+    "/api/metrics",
+    "/api/auth/login",
+    "/api/auth/me",
+    "/_next/static/x",
+    // The public /login screen renders <img src="/gh-logo.png">. Gating it
+    // redirects the image request to /login, so the browser gets HTML instead
+    // of a PNG and the logo is broken for every signed-out user.
+    "/gh-logo.png",
+  ])("passes %s through unconditionally", async (path) => {
+    const res = await proxy(req(path));
+    expect(isPassThrough(res)).toBe(true);
+  });
 });
 
 describe("valid session", () => {

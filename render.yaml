@@ -1,21 +1,53 @@
 # ─── GeraldOS Render Blueprint — lean production topology ───
-# GeraldOS (web) + PostgreSQL + Orthanc (private) + OHIF (web viewer).
+#
+#   Browser ──HTTPS──► geraldos-radiology   (web service, Next.js)
+#                          │  private network (same workspace + region)
+#                          ├──► geraldos-ohif      (pserv — OHIF viewer, proxied
+#                          │                        by Next.js at /viewer)
+#                          ├──► geraldos-orthanc   (pserv — Orthanc PACS + disk)
+#                          └──► geraldos-db        (managed PostgreSQL)
+#
+# Only the web service is reachable from the internet. Orthanc and OHIF are
+# private services with no public URL: the browser reaches the viewer at
+# https://<app>/viewer and reaches clinical images only through the
+# authenticated /api/orthanc/* routes. Nothing else is exposed.
 #
 # Usage:
 #   1. Push this file to your repo.
 #   2. Render Dashboard → New → Blueprint → Connect digitwinxr-max/geraldos-radiology.
-#   3. Render creates the database, the web service, the private Orthanc
-#      service, the OHIF web service and wires all env vars.
+#   3. Render creates the database, the web service and the two private
+#      services, then wires every env var below.
+#   4. Set the three `sync: false` secrets in the Dashboard (see "Required
+#      secrets" in docs/DEPLOYMENT.md) and redeploy.
 #
 # First deployment (automatic):
 #   - Postgres `geraldos-db` is created.
-#   - The GeraldOS web service builds the Docker image; Render then runs the
-#     preDeployCommand (`node scripts/db-seed.mjs migrate`) BEFORE starting the
-#     app, so the application never boots against an unmigrated schema.
-#   - Administrator bootstrap runs explicitly (one-time): see
+#   - The web service builds its Docker image; Render then runs the
+#     preDeployCommand (`node scripts/db-seed.mjs migrate`) BEFORE the new
+#     version goes live. A migration failure cancels the deploy, so the app can
+#     never boot against an unmigrated schema.
+#   - Administrator bootstrap is explicit and one-time: see
 #     docs/DEPLOYMENT.md → step 3.
-# No demo data is seeded automatically on any deployment (the seed command
-# refuses NODE_ENV=production).
+#   No demo data is seeded automatically on any deployment (the seed command
+#   refuses NODE_ENV=production).
+#
+# ─── Compute plans (all four resources are paid; this is the floor) ─────────
+# `starter` is the LOWEST tier that can run this architecture, not a comfort
+# choice. Concretely:
+#   - Private services have no free tier at all — `free` is only offered for web
+#     services, Postgres and Key Value. Both Orthanc and OHIF are pservs.
+#   - Persistent disks require a paid plan, and all DICOM imagery lives on the
+#     Orthanc disk. Without it every deploy would wipe the PACS.
+#   - Free web services spin down after ~15 min idle, may be restarted at any
+#     time, have an ephemeral filesystem, and offer no Render Shell — which is
+#     how the one-time administrator bootstrap is run.
+#   - Free Postgres instances EXPIRE (30 days after creation, then a 14-day
+#     grace period) after which Render permanently deletes the database, and
+#     they have no backups or point-in-time recovery. That is not survivable
+#     for a system of record holding patient data.
+# Indicative cost at the time of writing: 3 × starter services ($7/mo each) +
+# basic-256mb Postgres (~$7/mo) + 10 GB Orthanc disk (usage-based) ≈ $28/mo
+# plus disk and bandwidth. Verify current pricing before committing.
 
 services:
   # ── GeraldOS Web Service ────────────────────────────────────────────────
@@ -23,12 +55,17 @@ services:
     name: geraldos-radiology
     runtime: docker
     dockerfilePath: ./Dockerfile
+    plan: starter
     # Runs AFTER the image build, BEFORE the new version is deployed, on a
     # separate instance WITH this service's env vars. Migration failure fails
     # the deploy — the app never starts against an unmigrated schema.
     preDeployCommand: node scripts/db-seed.mjs migrate
     healthCheckPath: /api/health
-    autoDeploy: true
+    # Modern spelling of the deprecated `autoDeploy: true` (same behaviour:
+    # deploy on every commit to the linked branch). Switch to `checksPass` once
+    # the Blueprint tracks a branch that CI actually runs on, to gate deploys
+    # behind the typecheck/lint/test/build workflow.
+    autoDeployTrigger: commit
     envVars:
       - key: NODE_ENV
         value: production
@@ -45,15 +82,24 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      # Browser-facing origin of this app (e.g. https://geraldos-radiology.onrender.com).
+      # Used for post-login redirects and for the CSRF Origin allow-list, so it
+      # MUST be the public URL — not a container bind address.
       - key: PUBLIC_APP_URL
         sync: false
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
+      # Bind on all interfaces or Render's router cannot reach the app.
       - key: HOSTNAME
         value: "0.0.0.0"
-      - key: PORT
-        value: "3000"
-      # ── Orthanc (private service, same region) ──────────────────────────
+      # PORT is deliberately NOT pinned: Render injects it (default 10000) and
+      # routes public traffic to that same value, so letting the platform own
+      # the port contract removes any chance of the two disagreeing. The image
+      # defaults to 3000 for local `docker run`/compose.
+
+      # ── Orthanc PACS (private service, same region) ─────────────────────
+      # Injected as a bare `host:port` with no scheme; src/lib/integrations
+      # normalises it before use.
       - key: ORTHANC_URL
         fromService:
           name: geraldos-orthanc
@@ -61,67 +107,115 @@ services:
           property: hostport
       - key: ORTHANC_USERNAME
         value: orthanc
-      # Set ORTHANC_PASSWORD in the Dashboard to match the Orthanc private
-      # service's ORTHANC__REGISTERED_USERS value.
+      # REQUIRED. Set ORTHANC_PASSWORD in the Dashboard to the same password as
+      # the Orthanc service's ORTHANC__REGISTERED_USERS. Nothing is baked into
+      # the image: until both are set, Orthanc rejects every request and the
+      # Settings page reports it as unreachable (fails closed, never open).
       - key: ORTHANC_PASSWORD
         sync: false
-      # ── OHIF Viewer (web service, same region) ──────────────────────────
-      # OHIF_URL = server-side health target (internal hostport of the OHIF
-      # web service). OHIF_PUBLIC_URL = the browser-reachable viewer origin
-      # (the OHIF web service's public onrender.com URL), used for study
-      # deep links / iframe embedding. The viewer data source points at the
-      # GeraldOS same-origin DICOMweb proxy (ohif-config/app-config.js).
+
+      # ── OHIF Viewer (private service, same region) ──────────────────────
+      # Internal address of the viewer, used by the Next.js reverse proxy at
+      # /viewer and by the integration health check. The browser never sees it:
+      # it only ever requests this origin's /viewer path.
       - key: OHIF_URL
         fromService:
           name: geraldos-ohif
-          type: web
+          type: pserv
           property: hostport
-      - key: OHIF_PUBLIC_URL
-        sync: false
 
   # ── Orthanc PACS — private (no public exposure) ─────────────────────────
+  # No `region:` is pinned here (or on the OHIF service below) ON PURPOSE.
+  # Render's private network is scoped to a single workspace AND region: a
+  # service in Oregon cannot reach one in Ohio. The web service and the
+  # database inherit the Blueprint's region, so pinning these two to `oregon`
+  # would silently split the topology — and make Orthanc unreachable — the
+  # moment the Blueprint is created in any other region. Leaving region unset
+  # co-locates all four resources wherever the Blueprint is created.
+  # (Render's own default is `oregon`, so the default behaviour is unchanged.)
   - type: pserv
     name: geraldos-orthanc
     runtime: docker
     dockerfilePath: ./docker/orthanc/Dockerfile
-    region: oregon
+    # Paid plan is mandatory: private services have no free tier, and the
+    # persistent disk below requires a paid plan.
+    plan: starter
+    # DICOM imagery must outlive deploys and restarts — this disk is the only
+    # durable copy of the PACS contents. sizeGB must be 1 or a multiple of 5.
     disk:
       name: orthanc-data
       mountPath: /var/lib/orthanc/db
       sizeGB: 10
     envVars:
+      # Orthanc's HTTP server listens on 8042 (ORTHANC__HTTP_PORT in the
+      # Dockerfile). Declaring the same value as PORT keeps Render's
+      # expectation and the actual listener identical, so `hostport` above can
+      # only resolve to a port something is listening on. It also stays clear
+      # of the ports Render reserves for its own infrastructure.
+      - key: PORT
+        value: "8042"
       - key: ORTHANC__NAME
         value: GeraldOS-PACS
       - key: ORTHANC__DICOM_WEB__ENABLE
         value: "true"
       - key: ORTHANC__AUTHENTICATION_ENABLED
         value: "true"
+      # Only the DICOMweb plugin is loaded. The image default loads every
+      # plugin it ships (Orthanc Explorer 2, a bundled OHIF, ...), which would
+      # expose a second path to clinical images that GeraldOS cannot
+      # authorise.
       - key: ORTHANC__PLUGINS
         value: '["/usr/share/orthanc/plugins/libOrthancDicomWeb.so"]'
-      # Set ORTHANC__REGISTERED_USERS to {"orthanc":"<strong-password>"} in
-      # the Dashboard; keep it identical to the GeraldOS web service's
-      # ORTHANC_PASSWORD.
+      # REQUIRED — must be {"orthanc":"<strong password>"} and match this
+      # Blueprint's ORTHANC_PASSWORD. Deliberately `sync: false`: no credential
+      # is committed to the repository, and with authentication enabled an
+      # unset value means Orthanc denies all access rather than falling back to
+      # a default password.
       - key: ORTHANC__REGISTERED_USERS
         sync: false
 
-  # ── OHIF Viewer — public web service (browser-reachable) ────────────────
-  # The OHIF image listens on $PORT (Render injects it). The viewer's data
-  # source points at the GeraldOS same-origin DICOMweb proxy, so no CORS is
-  # needed; cross-origin embedding is governed by the documented SameSite=Lax
-  # cookie model (docs/DEPLOYMENT.md → §6).
-  - type: web
+  # ── OHIF Viewer — PRIVATE service, proxied by GeraldOS at /viewer ───────
+  # Not a web service: it has no public URL. The Next.js app reverse-proxies it
+  # (next.config.ts rewrites → /api/ohif/[[...path]]), so the viewer is served
+  # from the app's own origin. That is what makes authentication work —
+  # `onrender.com` is on the Public Suffix List, so a viewer on its own
+  # subdomain would be cross-SITE with the app and could never receive the
+  # SameSite=Lax session cookie. Same origin also means DICOMweb needs no CORS
+  # and no relaxed cookie policy.
+  #
+  # The image's nginx listens on $PORT, so the port contract is explicit here
+  # rather than left to auto-detection.
+  - type: pserv
     name: geraldos-ohif
     runtime: docker
     dockerfilePath: ./docker/ohif/Dockerfile
-    region: oregon
-    healthCheckPath: /
+    plan: starter
     envVars:
-      - key: PUBLIC_URL
-        value: /
+      - key: PORT
+        value: "3001"
+      # No PUBLIC_URL: it is a BUILD argument of the ohif/app image (baked in,
+      # default "/") and setting it at runtime does nothing. The viewer is
+      # mounted under /viewer by `routerBasename` in ohif-config/app-config.js
+      # plus the app's rewrites — the documented "simple" sub-path setup, which
+      # needs no rebuild of the upstream image.
+      # No healthCheckPath: that field is web-services-only. Private services
+      # get Render's default TCP health check.
 
 # ── PostgreSQL ────────────────────────────────────────────────────────────
 databases:
   - name: geraldos-db
     databaseName: geraldos
     user: geraldos_admin
-    plan: free
+    # `free` is NOT usable here: free Postgres instances expire 30 days after
+    # creation and are then permanently deleted, with no backups and no
+    # point-in-time recovery. `basic-256mb` is the lowest current paid tier
+    # (`starter` is a legacy database type that Render no longer allows for new
+    # databases). Disk size is left at the tier default (15 GB); it can be
+    # raised later but never lowered.
+    plan: basic-256mb
+    # Pin the major version to the one this repository is actually tested
+    # against (.github/workflows/ci.yml and docker-compose.yml both run
+    # postgres:16). The field is immutable after creation, so an explicit value
+    # here prevents the platform choosing an untested major for a system of
+    # record.
+    postgresMajorVersion: 16
