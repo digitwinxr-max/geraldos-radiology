@@ -20,7 +20,12 @@ function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const devAuthEnabled = env.devAuthEnabled;
+  // Same guard the enforcement points use (src/proxy.ts and
+  // src/app/api/auth/dev/route.ts). This is a client component, so NODE_ENV and
+  // DEV_AUTH are inlined at BUILD time: without the production half of the
+  // check, an image ever built with DEV_AUTH=true would advertise a bypass on
+  // the public login screen that the API then refuses with 403.
+  const devAuthEnabled = env.devAuthEnabled && !env.isProduction;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

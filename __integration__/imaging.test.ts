@@ -16,6 +16,7 @@ let receptionist!: CookieJar;
 // Shared across describes: upload → aggregation → reconciliation.
 let uploadedInstanceId = "";
 let studyInstanceUid = "";
+let viewerHtml = "";
 
 /** Resolve the authoritative StudyInstanceUID for an Orthanc instance id.
  *  Instance-level MainDicomTags carry only SOPInstanceUID — the study tag
@@ -144,5 +145,116 @@ describe("Reconciliation â€” RIS study â†’ Orthanc study â†’ work
       body: JSON.stringify({ stage: "referral" }),
     });
     expect(backward.status).toBe(409);
+  });
+});
+
+/**
+ * Same-origin viewer mount — the path a radiologist actually takes:
+ * login → open study → OHIF loads the study through GeraldOS → private Orthanc.
+ *
+ * The browser must reach OHIF through THIS origin (/viewer). A viewer on its
+ * own hostname is cross-SITE with the app on Render (`onrender.com` is a public
+ * suffix), so the SameSite=Lax session cookie that authorises DICOMweb would
+ * never be sent.
+ *
+ * These assertions run against the real `ohif/app` image, which is the one thing
+ * a mocked environment cannot reproduce: the HTML that image serves dictates
+ * exactly which root-level paths the app has to proxy. Rather than hardcode
+ * that list, every asset the shell references is fetched twice — once through
+ * the app, once straight from the upstream container — and the two responses
+ * must agree. A missing rewrite shows up as a mismatch immediately.
+ */
+describe("Viewer mount — same-origin OHIF through GeraldOS", () => {
+  it("publishes the viewer as a path prefix and no internal address", async () => {
+    const res = await fetch(`${env.appUrl}/api/integrations/client-config`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.ohifUrl).toBe("/viewer");
+    expect(body.orthancProxyBase).toBe("/api/orthanc/proxy");
+    // No Orthanc/OHIF hostname, port or credential may reach the browser.
+    expect(JSON.stringify(body)).not.toMatch(/https?:\/\//);
+    expect("orthancUrl" in body).toBe(false);
+  });
+
+  it("refuses the viewer shell to an anonymous visitor", async () => {
+    const res = await fetch(`${env.appUrl}/viewer`, { redirect: "manual" });
+    expect([307, 401]).toContain(res.status);
+  });
+
+  it("serves the OHIF shell at /viewer, frameable by this origin only", async () => {
+    const res = await jarFetch(radiologist, `${env.appUrl}/viewer`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    // The app-wide DENY / frame-ancestors 'none' must not apply here, or the
+    // browser refuses to render the iframe on /imaging and /workstation.
+    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("frame-ancestors 'self'");
+    expect(csp).not.toContain("frame-ancestors 'none'");
+
+    viewerHtml = await res.text();
+    expect(viewerHtml).toMatch(/<script/i);
+  });
+
+  it("proxies the shell byte-for-byte from the upstream document root", async () => {
+    const direct = await fetch(`${env.ohifUrl}/`);
+    expect(direct.status).toBe(200);
+    expect(await direct.text()).toBe(viewerHtml);
+  });
+
+  it("resolves every root-level asset the real OHIF bundle requests", async () => {
+    expect(viewerHtml, "viewer shell must have been fetched first").toBeTruthy();
+
+    const refs = [
+      ...viewerHtml.matchAll(/(?:src|href)\s*=\s*["'](\/[^"']+)["']/g),
+    ]
+      .map((m) => m[1])
+      .filter((u) => !u.startsWith("//"));
+    expect(refs.length, "the OHIF shell must reference root-absolute assets").toBeGreaterThan(0);
+
+    const mismatches: string[] = [];
+    for (const ref of refs) {
+      const viaApp = await jarFetch(radiologist, `${env.appUrl}${ref}`);
+      const direct = await fetch(`${env.ohifUrl}${ref}`);
+      const appType = viaApp.headers.get("content-type") ?? "";
+      const directType = direct.headers.get("content-type") ?? "";
+      if (viaApp.status !== direct.status || appType !== directType) {
+        mismatches.push(`${ref}: app=${viaApp.status} ${appType} vs ohif=${direct.status} ${directType}`);
+      }
+    }
+    expect(mismatches, `viewer assets not faithfully proxied: ${mismatches.join(" | ")}`).toEqual([]);
+  });
+
+  it("serves the mounted app-config with routerBasename /viewer and same-origin DICOMweb", async () => {
+    const res = await jarFetch(radiologist, `${env.appUrl}/app-config.js`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("routerBasename: '/viewer'");
+    expect(body).toContain("/api/orthanc/dicom-web");
+    expect(body).toContain("window.location.origin");
+  });
+
+  it("maps a study deep link onto OHIF's own viewer route", async () => {
+    expect(studyInstanceUid, "a study must have been uploaded first").toBeTruthy();
+    const viaApp = await jarFetch(
+      radiologist,
+      `${env.appUrl}/viewer/viewer?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUid)}`,
+    );
+    expect(viaApp.status).toBe(200);
+    expect(viaApp.headers.get("content-type")).toContain("text/html");
+
+    const direct = await fetch(`${env.ohifUrl}/viewer?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUid)}`);
+    expect(direct.status).toBe(200);
+    expect(await direct.text()).toBe(await viaApp.text());
+  });
+
+  it("serves the study the viewer will load through the authenticated DICOMweb proxy", async () => {
+    const res = await jarFetch(
+      radiologist,
+      `${env.appUrl}/api/orthanc/dicom-web/studies?StudyInstanceUID=${encodeURIComponent(studyInstanceUid)}`,
+    );
+    expect(res.status).toBe(200);
+    const studies = (await res.json()) as unknown[];
+    expect(Array.isArray(studies)).toBe(true);
   });
 });

@@ -121,7 +121,8 @@ This document records the foundational architectural decisions, context, rationa
     discovery (the provider's own view), not our constructed URL.
   - `OHIF_URL` = server-side health target; `OHIF_PUBLIC_URL` (optional) =
     browser-facing origin exposed via `publicClientConfig()` and admitted by CSP
-    `frame-src`.
+    `frame-src`. *(The OHIF half of this decision is superseded by ADR-015:
+    `OHIF_PUBLIC_URL` no longer exists.)*
 - **Consequences**: Browser traffic always targets reachable origins while
   server-to-server traffic stays on the internal network; issuer validation is
   correct under split-horizon DNS.
@@ -236,3 +237,41 @@ This document records the foundational architectural decisions, context, rationa
   RISKS section records the trade-offs (per-instance rate-limit windows,
   multi-instance deployments need front-proxy stickiness; OHIF iframe cookie
   constraints are unchanged).
+
+---
+
+## ADR-015: Same-Origin Viewer Mount (supersedes the OHIF portion of ADR-009)
+
+- **Status**: Accepted & Authoritative.
+- **Context**: The session cookie is `HttpOnly` + `SameSite=Lax`, and the OHIF
+  viewer's DICOMweb calls are authorised by it. Render's free hostnames are
+  subdomains of `onrender.com`, which is on the **Public Suffix List**, so an app
+  at `geraldos-radiology.onrender.com` and a viewer at
+  `geraldos-ohif.onrender.com` are cross-*site* — not merely cross-origin. The
+  cookie therefore can never reach a separately-hosted viewer. Every workaround
+  is unacceptable: `Domain=.onrender.com` is rejected by RFC 6265 across a public
+  suffix (and would leak the session to every other tenant on the platform),
+  while `SameSite=None` + CORS `credentials` on clinical-data endpoints weakens
+  auth for all users and still fails as browsers block third-party cookies.
+- **Decision**: Serve OHIF from the app's own origin.
+  - Next.js reverse-proxies the viewer at `/viewer` (`next.config.ts` rewrites →
+    `src/app/api/ohif/[[...path]]/route.ts`). The mount prefix maps 1:1 onto
+    OHIF's document root, so the upstream image needs no rebuild.
+  - `ohif-config/app-config.js` sets `routerBasename: '/viewer'` — the documented
+    "simple" sub-path setup. `PUBLIC_URL` is a build argument of `ohif/app` and
+    cannot change at runtime, so the bundle keeps requesting assets from the
+    origin root (`/assets/…`, `/app-config.js`); the app proxies those too, plus a
+    root-level static-file fallback so the mount survives OHIF version drift.
+  - The OHIF Render service became a private `pserv` (no public URL).
+    `OHIF_PUBLIC_URL` was deleted; `publicClientConfig()` now publishes the path
+    prefix `/viewer` and no internal Orthanc address.
+  - The viewer namespace is authenticated by the same edge gate as the app, and
+    gets `frame-ancestors 'self'` / `X-Frame-Options: SAMEORIGIN` instead of the
+    app-wide `DENY`. The session cookie is never forwarded upstream.
+- **Consequences**: Login → open study → OHIF loads the study through GeraldOS →
+  private Orthanc works with one origin, no CORS, no cookie-policy relaxation and
+  no public OHIF surface. Costs: the viewer's multi-megabyte bundle is streamed
+  through the Next.js server (mitigated by ETag/conditional-request relay), and
+  the viewer document shares the app's origin, so an XSS in the upstream viewer
+  would run same-origin — mitigated by authentication, a private upstream and a
+  pinned image digest. See KNOWN_ISSUES O-1b for the tracked CSP follow-up.

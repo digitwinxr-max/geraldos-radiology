@@ -1,9 +1,16 @@
 # GeraldOS — Docker Compose deployment bundle.
 #
 # Lean production topology: app + PostgreSQL + Orthanc + OHIF.
+# This mirrors render.yaml exactly: the browser talks only to `app`, OHIF is
+# reverse-proxied by the app at /viewer, and Orthanc is reachable only through
+# the app's authenticated /api/orthanc/* routes.
 #
-# Start everything:  docker compose up -d
-# Environment variables are read from .env (see .env.example for reference).
+# Start everything:  cp .env.example .env   # then set the required values
+#                     docker compose up -d
+#
+# No credential is hardcoded here. Every secret is interpolated from .env with
+# `${VAR:?...}`, so a missing value fails the compose invocation loudly instead
+# of silently starting the stack with a password that is public in git.
 
 services:
 
@@ -32,15 +39,18 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: geraldos_admin
-      POSTGRES_PASSWORD: geraldos_secure_pass
-      POSTGRES_DB: geraldos
-    ports: ["5432:5432"]
+      POSTGRES_USER: ${POSTGRES_USER:-geraldos_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (must match the credentials in DATABASE_URL)}
+      POSTGRES_DB: ${POSTGRES_DB:-geraldos}
+    # Loopback only: the database is an internal datastore. Connect from the
+    # host with the 127.0.0.1 URL documented in .env.example; never publish it
+    # on the LAN.
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U geraldos_admin -d geraldos"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-geraldos_admin} -d ${POSTGRES_DB:-geraldos}"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 20
     restart: unless-stopped
 
@@ -55,13 +65,20 @@ services:
       ORTHANC__DICOM_WEB__ENABLE: "true"
       ORTHANC__AUTHENTICATION_ENABLED: "true"
       ORTHANC__PLUGINS: '["/usr/share/orthanc/plugins/libOrthancDicomWeb.so"]'
-      ORTHANC__REGISTERED_USERS: |-
-        {"orthanc": "orthanc_secure_pass"}
-    ports: ["8042:8042"]
+      # Exposed to the container so the healthcheck can authenticate without a
+      # credential being written into this file.
+      ORTHANC_USERNAME: ${ORTHANC_USERNAME:-orthanc}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:?set ORTHANC_PASSWORD in .env (must match ORTHANC__REGISTERED_USERS)}
+      # Compose interpolates the value before the container sees it, so this
+      # arrives as valid JSON. Avoid `"` and `\` in the password.
+      ORTHANC__REGISTERED_USERS: '{"${ORTHANC_USERNAME:-orthanc}":"${ORTHANC_PASSWORD}"}'
+    # Loopback only, for the same reason as postgres: the PACS holds clinical
+    # images and is meant to be reached through the app, never directly.
+    ports: ["127.0.0.1:8042:8042"]
     volumes:
       - orthancdata:/var/lib/orthanc/db
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request,base64;req=urllib.request.Request('http://localhost:8042/system');req.add_header('Authorization','Basic '+base64.b64encode(b'orthanc:orthanc_secure_pass').decode());urllib.request.urlopen(req,timeout=3).read()\" || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import os,urllib.request,base64;c=(os.environ['ORTHANC_USERNAME']+':'+os.environ['ORTHANC_PASSWORD']).encode();r=urllib.request.Request('http://localhost:8042/system');r.add_header('Authorization','Basic '+base64.b64encode(c).decode());urllib.request.urlopen(r,timeout=3).read()\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -69,12 +86,15 @@ services:
     restart: unless-stopped
 
   # ─── Core: OHIF Viewer ───────────────────────────────────────────────────────
+  # No published port, on purpose. The viewer is reached through the app at
+  # http://localhost:3000/viewer, exactly as it is behind the private service on
+  # Render. Publishing it separately would create a second origin whose
+  # same-origin DICOMweb calls (and therefore session cookie) do not work.
 
   ohif:
     build:
       context: .
       dockerfile: docker/ohif/Dockerfile
-    ports: ["3001:80"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
       interval: 10s

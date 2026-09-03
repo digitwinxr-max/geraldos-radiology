@@ -103,3 +103,73 @@ describe("requirePermission CSRF integration", () => {
     }
   });
 });
+
+/**
+ * Render topology regression.
+ *
+ * On Render the container binds 0.0.0.0:$PORT and Next resolves
+ * `request.nextUrl.origin` from that bind address, giving
+ * `https://0.0.0.0:3000` — a value no browser can ever send as its Origin.
+ * Comparing against `nextUrl.origin` therefore rejected EVERY authenticated
+ * mutation in production (40 route files) while passing locally and in the
+ * tests above. These cases pin the fixed behaviour.
+ */
+describe("checkCsrf behind a TLS-terminating reverse proxy (Render)", () => {
+  const PUBLIC_ORIGIN = "https://geraldos-radiology.onrender.com";
+
+  /** Mimics the real production request: bind-address URL + forwarded headers. */
+  function proxied(headers: Record<string, string>): NextRequest {
+    return new NextRequest("https://0.0.0.0:3000/api/patients", {
+      method: "POST",
+      headers: {
+        host: "geraldos-radiology.onrender.com",
+        "x-forwarded-proto": "https",
+        ...headers,
+      },
+    });
+  }
+
+  it("accepts the real browser Origin even though nextUrl.origin is the bind address", () => {
+    expect(proxied({}).nextUrl.origin).toBe("https://0.0.0.0:3000");
+    expect(checkCsrf(proxied({ origin: PUBLIC_ORIGIN }))).toBeNull();
+  });
+
+  it("rejects the bind-address origin — a browser can never legitimately send it", () => {
+    expect(checkCsrf(proxied({ origin: "https://0.0.0.0:3000" }))).not.toBeNull();
+  });
+
+  it("still rejects a foreign Origin behind the proxy", () => {
+    const res = checkCsrf(proxied({ origin: "http://evil.example" }));
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(403);
+  });
+
+  it("accepts a Referer from the public origin", () => {
+    expect(checkCsrf(proxied({ referer: `${PUBLIC_ORIGIN}/worklist` }))).toBeNull();
+  });
+
+  it("rejects a foreign Referer behind the proxy", () => {
+    expect(checkCsrf(proxied({ referer: "http://evil.example/page" }))).not.toBeNull();
+  });
+
+  it("still rejects a mutation with neither Origin nor Referer", () => {
+    expect(checkCsrf(proxied({}))).not.toBeNull();
+  });
+
+  it("accepts the operator-declared PUBLIC_APP_URL when a proxy strips forwarded headers", () => {
+    const previous = process.env.PUBLIC_APP_URL;
+    process.env.PUBLIC_APP_URL = PUBLIC_ORIGIN;
+    try {
+      // No host / x-forwarded-* headers at all: nextUrl.origin is the only
+      // signal left, so PUBLIC_APP_URL is what keeps the deployment usable.
+      const bare = new NextRequest("https://0.0.0.0:3000/api/patients", {
+        method: "POST",
+        headers: { origin: PUBLIC_ORIGIN },
+      });
+      expect(checkCsrf(bare)).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.PUBLIC_APP_URL;
+      else process.env.PUBLIC_APP_URL = previous;
+    }
+  });
+});

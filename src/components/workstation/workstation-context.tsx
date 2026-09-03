@@ -20,8 +20,8 @@ import { useNotifications, type NotificationsEnvelope } from "@/hooks/use-notifi
 
 // ─── Types (mirror API payloads) ───
 export interface ClientConfig {
+  /** Same-origin mount prefix of the proxied OHIF viewer (e.g. "/viewer"). */
   ohifUrl: string;
-  orthancUrl?: string | null;
   orthancProxyBase: string;
 }
 

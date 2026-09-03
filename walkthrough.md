@@ -201,7 +201,8 @@ Orthanc + OHIF):
   service only.
 - `scripts/db-seed.mjs` — `migrate | seed | all`; seed refuses
   `NODE_ENV=production`; `SEED_URL` overridable.
-- `services/` — only `orthanc.json` remains; `docker/` — only `orthanc/`.
+- `services/` — removed entirely (`orthanc.json` was dead config carrying a
+  hardcoded credential); `docker/` — `orthanc/Dockerfile` + `ohif/Dockerfile`.
 - `docker compose config` validation was **BLOCKED** in this environment (no
   Docker binary) — static inspection only; flagged under REMAINING RISKS.
 

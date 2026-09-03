@@ -30,6 +30,12 @@ const PUBLIC_PREFIXES = [
   "/api/integrations/client-config",
   "/_next",
   "/favicon.ico",
+  // Static branding served from public/ and rendered by the PRE-authentication
+  // /login screen. Without this the gate 307-redirects the <img> request to
+  // /login, so the browser receives HTML instead of a PNG and the logo is
+  // broken for every signed-out user. Anything else placed in public/ that a
+  // signed-out screen references must be listed here too.
+  "/gh-logo.png",
 ];
 
 function isPublic(pathname: string): boolean {

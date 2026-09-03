@@ -4,6 +4,7 @@ import { authenticateStaff } from "@/lib/auth/native-auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { rateLimited } from "@/lib/api-error";
 import { recordAudit } from "@/lib/audit";
+import { publicOrigin } from "@/lib/public-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -45,5 +46,8 @@ export async function POST(request: NextRequest) {
 
 /** GET is kept as a convenience redirect for stale links to the old flow. */
 export async function GET(request: NextRequest) {
-  return NextResponse.redirect(new URL("/login", request.nextUrl.origin));
+  // `nextUrl.origin` is the container's bind address behind Render's router
+  // (https://0.0.0.0:3000), which the browser cannot navigate to. See
+  // src/lib/public-origin.ts.
+  return NextResponse.redirect(new URL("/login", publicOrigin(request)));
 }

@@ -26,7 +26,8 @@ services:
       retries: 30
 
   orthanc:
-    image: orthancteam/orthanc:latest
+    # Same pin as docker/orthanc/Dockerfile so the suite tests production.
+    image: orthancteam/orthanc:26.8.2
     container_name: geraldos-it-orthanc
     environment:
       ORTHANC__NAME: GeraldOS-IT-PACS
@@ -42,6 +43,22 @@ services:
       # NOTE: /bin/sh here is dash — /dev/tcp (bash-only) silently never works.
       # python3 ships with orthancteam/orthanc; use it for a real HTTP probe.
       test: ["CMD-SHELL", "python3 -c \"import os,urllib.request,base64; r=urllib.request.Request('http://127.0.0.1:8042/system'); r.add_header('Authorization','Basic '+base64.b64encode(os.environ['IT_ORTHANC_USER'].encode()+b':'+os.environ['IT_ORTHANC_PASS'].encode()).decode()); urllib.request.urlopen(r, timeout=3)\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # The viewer is proxied by the app at /viewer in production (private service
+  # on Render). The integration suite runs the app on the HOST, so the port is
+  # published here and the app is pointed at it with OHIF_URL.
+  ohif:
+    build:
+      context: .
+      dockerfile: docker/ohif/Dockerfile
+    container_name: geraldos-it-ohif
+    ports: ["53001:80"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 30
