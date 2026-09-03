@@ -68,13 +68,14 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ─── Core: OHIF Viewer ───────────────────────────────────────────────────────
+  # ─── Core: OHIF Viewer (private — mounted at /viewer via the app proxy) ──────
 
   ohif:
     build:
       context: .
       dockerfile: docker/ohif/Dockerfile
-    ports: ["3001:80"]
+    # No public port: the app edge proxy mounts OHIF at /viewer on the app
+    # origin, exactly like the Render topology (scripts/edge-proxy.mjs).
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
       interval: 10s

@@ -15,7 +15,9 @@
 var apiBase = window.location.protocol + '//' + window.location.host;
 
 window.config = {
-  routerBasename: '/',
+  // Mounted by the GeraldOS edge proxy at /viewer (same origin as the app).
+  // Must stay in sync with scripts/edge-proxy.mjs VIEWER_PREFIX.
+  routerBasename: '/viewer',
   extensions: [],
   modes: [],
   showStudyList: true,

@@ -95,23 +95,28 @@ It is NOT run on every deploy and demo data is never seeded automatically.
 
 ### 6. OHIF deployment/configuration
 - **Compose**: `docker compose up -d ohif` (image built from
-  `docker/ohif/Dockerfile`; served at http://localhost:3001).
-- **Render**: a separate web service (`geraldos-ohif`) built from
-  `docker/ohif/Dockerfile` — browser-reachable so the viewer can actually be
-  loaded. The OHIF image listens on `$PORT` (Render injects it). GeraldOS gets
-  `OHIF_URL` from the OHIF service's internal `hostport` (server-side health
-  checks) and `OHIF_PUBLIC_URL` should be set to the OHIF service's public
-  onrender.com URL.
+  `docker/ohif/Dockerfile`). OHIF has NO public port in compose — it is
+  reached only by the app's edge proxy.
+- **Render**: a PRIVATE service (`geraldos-ohif`, pserv, no public URL) built
+  from `docker/ohif/Dockerfile`. `OHIF_URL` is injected into the app from its
+  internal `hostport`.
+- **Same-origin mounting**: the app container runs `scripts/edge-proxy.mjs`
+  as its entry point. It listens on the public `$PORT`, forwards `/viewer/*`
+  (prefix-stripped) plus OHIF's root-level static assets to `OHIF_URL`, and
+  passes everything else to the Next.js standalone server. The viewer is
+  therefore mounted at `/viewer` on the app's own origin
+  (`ohif-config/app-config.js` routerBasename).
+- **Why**: the workstation embeds OHIF in an iframe and the session cookie is
+  `SameSite=Lax`; a separately-hosted OHIF could never carry the cookie on
+  cross-origin DICOMweb XHR. With the same-origin mount the cookie flows on
+  every call, no CORS exists, the viewer shell is auth-gated by `src/proxy.ts`,
+  and Orthanc credentials never leave the server.
 - Configuration: the viewer data source points at the GeraldOS **same-origin
   DICOMweb proxy** (`/api/orthanc/dicom-web`, WADO-URI, QIDO-RS, STOW-RS) via
   `ohif-config/app-config.js` — the browser never talks to Orthanc directly,
-  so no CORS configuration is required and Orthanc credentials never leave the
-  server. Cross-origin embedding from a separate public origin is subject to
-  the SameSite=Lax cookie model (see §6 — Identity & viewer topology notes):
-  the fully embedded viewer
-  authenticates only when OHIF is served from the same origin as GeraldOS
-  (reverse-proxy co-location); the imaging page's same-origin series
-  inspection works in every topology.
+  so no CORS configuration is required and Orthanc credentials never leave
+  the server. Study deep links are
+  `${PUBLIC_APP_URL}/viewer/viewer?StudyInstanceUIDs=<uid>`.
 
 ### 7. Health verification
 - `GET /api/health` — public probe; returns `200 {"status":"healthy"}` when the
@@ -127,9 +132,8 @@ It is NOT run on every deploy and demo data is never seeded automatically.
 ### 9. Imaging verification
 - Register a patient (reception), create a workflow study, upload a DICOM file
   at `/api/orthanc/upload` (or via DICOM push to Orthanc), confirm the study
-  reconciles into the worklist, and open the OHIF viewer deep link
-  (`${OHIF_PUBLIC_URL}/viewer?StudyInstanceUIDs=<uid>` or, on Render, the
-  same-origin viewer through the GeraldOS proxy).
+  reconciles into the worklist, and open the same-origin viewer deep link
+  (`${PUBLIC_APP_URL}/viewer/viewer?StudyInstanceUIDs=<uid>`).
 
 ---
 
@@ -143,7 +147,7 @@ It is NOT run on every deploy and demo data is never seeded automatically.
 | `PUBLIC_APP_URL` | Prod | Browser-facing origin (Render). |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Bootstrap | One-time first administrator (secrets; see step 3). |
 | `ORTHANC_URL` / `ORTHANC_USERNAME` / `ORTHANC_PASSWORD` | Imaging | Orthanc REST credentials (server-side only). |
-| `OHIF_URL` / `OHIF_PUBLIC_URL` | Imaging | OHIF server health target / browser-facing viewer origin. |
+| `OHIF_URL` | Imaging | OHIF private service target (edge proxy mount + health check). |
 | `DEV_AUTH` | Dev | Opt-in dev admin login (never in production). |
 | `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error`. |
 
@@ -184,11 +188,10 @@ On Render, use the managed Postgres backup feature (point-in-time restore).
 - **Identity**: native — staff rows in PostgreSQL carry scrypt password hashes;
   sessions are HS256 JWTs signed with `AUTH_SECRET`. Rotate `AUTH_SECRET` to
   invalidate every session.
-- **OHIF cookie model**: the session cookie is `SameSite=Lax`. The viewer's
-  data source always points at the GeraldOS DICOMweb proxy
-  (`/api/orthanc/dicom-web`). When OHIF is served from a different public
-  origin than GeraldOS, the browser withholds the session cookie on
-  cross-site XHR, so the fully embedded viewer authenticates only when OHIF is
-  co-located behind the same origin as GeraldOS (reverse-proxy co-location,
-  e.g. routing `/viewer/*` → OHIF). The imaging page's same-origin series
-  inspection (`/api/orthanc/proxy`) works in every topology.
+- **OHIF cookie model**: the session cookie is `SameSite=Lax`. OHIF is mounted
+  by the app edge proxy at `/viewer` on the app's own origin
+  (`scripts/edge-proxy.mjs`), so the embedded viewer is same-origin: the
+  cookie flows on every DICOMweb call, `src/proxy.ts` auth-gates the viewer
+  shell and static assets, and no CORS or separate public viewer origin is
+  involved. The imaging page's same-origin series inspection
+  (`/api/orthanc/proxy`) works in every topology.

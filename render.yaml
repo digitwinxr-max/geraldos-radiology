@@ -1,11 +1,18 @@
 # ─── GeraldOS Render Blueprint — lean production topology ───
-# GeraldOS (web) + PostgreSQL + Orthanc (private) + OHIF (web viewer).
+# GeraldOS (web, with in-container edge proxy) + PostgreSQL + Orthanc (private)
+# + OHIF (private, mounted same-origin at /viewer through the app proxy).
 #
 # Usage:
 #   1. Push this file to your repo.
 #   2. Render Dashboard → New → Blueprint → Connect digitwinxr-max/geraldos-radiology.
-#   3. Render creates the database, the web service, the private Orthanc
-#      service, the OHIF web service and wires all env vars.
+#   3. Render creates the database, the web service and the two private
+#      services, and wires all env vars.
+#
+# Viewer topology: OHIF is a PRIVATE service with no public URL. The GeraldOS
+# web service runs scripts/edge-proxy.mjs, which mounts OHIF at /viewer on the
+# app's own origin. The embedded workstation viewer is therefore same-origin:
+# the GeraldOS session cookie (SameSite=Lax) flows on every DICOMweb call and
+# the browser never talks to Orthanc or OHIF directly.
 #
 # First deployment (automatic):
 #   - Postgres `geraldos-db` is created.
@@ -22,6 +29,8 @@ services:
   - type: web
     name: geraldos-radiology
     runtime: docker
+    plan: starter
+    region: oregon
     dockerfilePath: ./Dockerfile
     # Runs AFTER the image build, BEFORE the new version is deployed, on a
     # separate instance WITH this service's env vars. Migration failure fails
@@ -65,26 +74,22 @@ services:
       # service's ORTHANC__REGISTERED_USERS value.
       - key: ORTHANC_PASSWORD
         sync: false
-      # ── OHIF Viewer (web service, same region) ──────────────────────────
-      # OHIF_URL = server-side health target (internal hostport of the OHIF
-      # web service). OHIF_PUBLIC_URL = the browser-reachable viewer origin
-      # (the OHIF web service's public onrender.com URL), used for study
-      # deep links / iframe embedding. The viewer data source points at the
-      # GeraldOS same-origin DICOMweb proxy (ohif-config/app-config.js).
+      # ── OHIF Viewer (PRIVATE service, mounted at /viewer by the edge proxy)
+      # Server-side only: used by the edge proxy and the integrations health
+      # check. The browser reaches OHIF exclusively through this app.
       - key: OHIF_URL
         fromService:
           name: geraldos-ohif
-          type: web
+          type: pserv
           property: hostport
-      - key: OHIF_PUBLIC_URL
-        sync: false
 
   # ── Orthanc PACS — private (no public exposure) ─────────────────────────
   - type: pserv
     name: geraldos-orthanc
     runtime: docker
-    dockerfilePath: ./docker/orthanc/Dockerfile
+    plan: starter
     region: oregon
+    dockerfilePath: ./docker/orthanc/Dockerfile
     disk:
       name: orthanc-data
       mountPath: /var/lib/orthanc/db
@@ -104,24 +109,25 @@ services:
       - key: ORTHANC__REGISTERED_USERS
         sync: false
 
-  # ── OHIF Viewer — public web service (browser-reachable) ────────────────
-  # The OHIF image listens on $PORT (Render injects it). The viewer's data
-  # source points at the GeraldOS same-origin DICOMweb proxy, so no CORS is
-  # needed; cross-origin embedding is governed by the documented SameSite=Lax
-  # cookie model (docs/DEPLOYMENT.md → §6).
-  - type: web
+  # ── OHIF Viewer — PRIVATE service (no public URL) ────────────────────────
+  # Reached only by the GeraldOS edge proxy over the private network and
+  # mounted at /viewer on the app origin (see scripts/edge-proxy.mjs and
+  # ohif-config/app-config.js routerBasename).
+  - type: pserv
     name: geraldos-ohif
     runtime: docker
-    dockerfilePath: ./docker/ohif/Dockerfile
+    plan: starter
     region: oregon
-    healthCheckPath: /
+    dockerfilePath: ./docker/ohif/Dockerfile
     envVars:
       - key: PUBLIC_URL
         value: /
 
 # ── PostgreSQL ────────────────────────────────────────────────────────────
+# Paid plan: clinical data must survive — the free tier expires after 30
+# days, is capped at 1 GB and has no backups.
 databases:
   - name: geraldos-db
     databaseName: geraldos
     user: geraldos_admin
-    plan: free
+    plan: 0.1c-256mb

@@ -39,7 +39,6 @@ import {
   Crosshair,
   Play,
   Box,
-  ExternalLink,
   Loader2,
   AlertTriangle,
   RefreshCw,
@@ -121,7 +120,9 @@ export function ViewerPanel() {
   }, [contextData]);
 
   // ─── OHIF URL construction (stable reference) ───
-  const ohifBase = config?.ohifUrl?.replace(/\/$/, "") ?? "";
+  // OHIF is mounted on THIS origin at /viewer (same-origin iframe), so the
+  // session cookie is sent on every DICOMweb call the viewer makes.
+  const ohifBase = (config?.viewerBase ?? config?.ohifUrl ?? "").replace(/\/+$/, "");
   const buildOhifUrl = useCallback((uid: string, options?: { datasource?: string; priorUid?: string }) => {
     if (!ohifBase) return null;
     const params = new URLSearchParams({ StudyInstanceUIDs: uid });
@@ -135,8 +136,9 @@ export function ViewerPanel() {
   // ─── OHIF message listener ───
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Only handle messages from OHIF
-      if (config?.ohifUrl && !event.origin.startsWith(config.ohifUrl.replace(/\/$/, ""))) {
+      // The viewer iframe is same-origin under the new topology — only accept
+      // messages from this window's own origin.
+      if (event.origin !== window.location.origin) {
         return;
       }
 
@@ -387,24 +389,6 @@ export function ViewerPanel() {
           ) : "Standalone preview"}
         </span>
 
-        {/* Orthanc Explorer button */}
-        {config?.orthancUrl ? (
-          <a
-            href={config.orthancUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open Orthanc Explorer in new tab"
-            className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
-          >
-            <ExternalLink className="h-3 w-3" />
-            <span className="hidden xl:inline">Orthanc</span>
-          </a>
-        ) : (
-          <span className="flex items-center gap-1 rounded-md border border-slate-800 px-1.5 py-0.5 text-[9px] text-slate-600">
-            <ExternalLink className="h-3 w-3" /> Orthanc offline
-          </span>
-        )}
-
         {/* Fullscreen */}
         <button onClick={toggleFullscreen} title="Fullscreen (F11)" className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200">
           {fullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
@@ -571,8 +555,8 @@ export function ViewerPanel() {
                         <p className="text-[11px] text-slate-400 mt-1">{ohifError ?? "Failed to load the DICOM viewer"}</p>
                       </div>
                       <div className="text-[10px] text-slate-500 space-y-1">
-                        <p>Check that OHIF is running at: {config?.ohifUrl}</p>
-                        <p>Check that Orthanc DICOMweb is accessible at: {config?.orthancUrl}</p>
+                        <p>Check that the OHIF viewer is mounted at: {config?.viewerBase ?? "/viewer"}</p>
+                        <p>Check that the Orthanc DICOMweb proxy is reachable at: {config?.orthancProxyBase}</p>
                       </div>
                       <button
                         onClick={() => {

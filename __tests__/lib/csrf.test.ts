@@ -51,6 +51,21 @@ describe("checkCsrf", () => {
     expect(checkCsrf(request("POST"))).not.toBeNull();
   });
 
+  it("accepts mutations whose Origin matches a forwarded public origin (edge proxy, TLS-terminating proxy拓扑)", () => {
+    expect(
+      checkCsrf(request("POST", {
+        origin: "https://app.onrender.com",
+        "x-forwarded-host": "app.onrender.com",
+        "x-forwarded-proto": "https",
+      })),
+    ).toBeNull();
+    // The socket URL differs from the browser origin — this is the classic
+    // reverse-proxy case. Without the forwarded headers this would be rejected.
+    expect(
+      checkCsrf(request("POST", { origin: "https://app.onrender.com" })),
+    ).not.toBeNull();
+  });
+
   it("prefers Origin over Referer when both are present", () => {
     expect(
       checkCsrf(request("POST", { origin: "http://evil.example", referer: `${ORIGIN}/x` })),

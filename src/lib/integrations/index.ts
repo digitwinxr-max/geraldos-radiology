@@ -17,20 +17,23 @@ export const integrationConfig = {
     password: process.env.ORTHANC_PASSWORD ?? "",
   },
   ohif: {
+    // Server-side only: edge-proxy mount target + integrations health check.
+    // The browser reaches the viewer via the same-origin /viewer mount.
     url: process.env.OHIF_URL ?? "",
-    /** Browser-facing base for the embedded viewer iframe (see .env.example). */
-    publicUrl: process.env.OHIF_PUBLIC_URL ?? "",
-    get browserUrl() {
-      return this.publicUrl || this.url;
-    },
   },
 } as const;
+
+/** Browser-facing base of the same-origin OHIF mount (see scripts/edge-proxy.mjs). */
+const VIEWER_BASE = "/viewer";
 
 /** Non-secret config that is safe to expose to the browser. */
 export function publicClientConfig() {
   return {
-    ohifUrl: integrationConfig.ohif.browserUrl,
-    orthancUrl: integrationConfig.orthanc.url || null,
+    // OHIF is mounted at /viewer on THIS origin by the app edge proxy, so the
+    // embedded viewer is same-origin: the session cookie flows on every
+    // DICOMweb call and no cross-origin configuration is needed.
+    ohifUrl: VIEWER_BASE,
+    viewerBase: VIEWER_BASE,
     orthancProxyBase: "/api/orthanc/proxy",
   };
 }

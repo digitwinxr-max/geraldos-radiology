@@ -20,7 +20,16 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 export function checkCsrf(request: NextRequest): NextResponse<ApiErrorBody> | null {
   if (!MUTATING_METHODS.has(request.method.toUpperCase())) return null;
 
-  const expected = request.nextUrl.origin;
+  // Behind the GeraldOS edge proxy (and any TLS-terminating reverse proxy),
+  // the socket URL differs from the origin the browser actually used. Derive the
+  // expected origin from the forwarded headers those proxies set — falling back
+  // to request.nextUrl.origin when absent (direct connections, tests).
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const expected =
+    forwardedProto && forwardedHost
+      ? `${forwardedProto}://${forwardedHost.split(",")[0].trim()}`
+      : request.nextUrl.origin;
 
   const origin = request.headers.get("origin");
   if (origin) {

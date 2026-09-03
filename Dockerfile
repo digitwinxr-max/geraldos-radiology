@@ -94,5 +94,7 @@ COPY --from=deploy /app/package.json ./
 
 USER nextjs
 EXPOSE 3000
-ENV PORT=3000 HOSTNAME="0.0.0.0"
-CMD ["node", "server.js"]
+# PORT is the PUBLIC listener (edge proxy: /viewer → OHIF, rest → Next.js).
+# NEXT_PORT is the internal Next.js standalone listener behind the proxy.
+ENV PORT=3000 NEXT_PORT=3001 HOSTNAME="0.0.0.0"
+CMD ["node", "scripts/edge-proxy.mjs"]
