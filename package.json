@@ -40,7 +40,7 @@
     "next": "16.2.6",
     "pg": "8.20.0",
     "react": "19.2.6",
-    "react-dom": "19.2.6",
+    "react-dom": "19.2.8",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },
@@ -50,7 +50,7 @@
     "@types/node": "22.19.15",
     "@types/pg": "8.18.0",
     "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
+    "@types/react-dom": "19.2.5",
     "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
