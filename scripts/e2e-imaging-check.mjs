@@ -16,7 +16,7 @@
  * (dicom-samples/CT001_001.dcm).
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -133,6 +133,13 @@ async function checkClinical() {
 
 // ─── 7. DICOM upload + DICOMweb (the imaging path) ──────────────────────────
 async function checkImaging() {
+  // dicom-samples/ is excluded from the production image (see .dockerignore),
+  // so on a Render Shell run the sample is not available — skip the upload
+  // chain gracefully rather than aborting the harness.
+  if (!existsSync(SAMPLE)) {
+    console.log(`SKIP  imaging (U*) checks — sample DICOM not present (${SAMPLE})`);
+    return;
+  }
   const dicom = readFileSync(SAMPLE);
   const form = new FormData();
   form.append("files", new File([dicom], "CT001_001.dcm", { type: "application/dicom" }));
