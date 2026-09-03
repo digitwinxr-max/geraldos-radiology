@@ -292,3 +292,59 @@ invalidate every session.
 After setting the secrets, **redeploy** so the web service picks them up, then
 run the bootstrap from the Render Shell and verify `/settings` shows Orthanc,
 OHIF and PostgreSQL as `connected`.
+
+## 8. Post-deployment verification
+
+Unit and integration tests prove the *code* is correct. They cannot prove the
+*deployed topology* is — that PostgreSQL, Orthanc and OHIF are actually
+reachable from inside Render's private network, and that the browser-facing
+path works end to end. `scripts/verify-deployment.mjs` does that against a live
+instance:
+
+```bash
+export APP_URL=https://geraldos-radiology.onrender.com
+export ADMIN_EMAIL=you@example.com
+read -rs ADMIN_PASSWORD && export ADMIN_PASSWORD     # not echoed, not stored
+node scripts/verify-deployment.mjs
+```
+
+Alternatively, verify with an existing session instead of credentials (useful in
+CI, and it keeps the administrator password out of the shell entirely):
+
+```bash
+APP_URL=… SESSION_TOKEN=… node scripts/verify-deployment.mjs
+```
+
+It runs 44 checks across the whole acceptance path and exits non-zero on any
+failure:
+
+| Group | Proves |
+|---|---|
+| `H1`–`H3` | `/api/health` is 200 and reports `"healthy"` — i.e. the PostgreSQL probe succeeded. `"degraded"` means `DATABASE_URL` was never wired; `"unhealthy"` means the database is unreachable. |
+| `A1`–`A4` | Unauthenticated access to the worklist, DICOMweb and `/viewer` is rejected, and auth redirects never target `0.0.0.0`. |
+| `L1`–`L6` | Login works and the session cookie is `HttpOnly`, `Secure`, `SameSite=Lax`/`Strict` and **host-only** — never scoped across `onrender.com`, which is a public suffix and would be rejected outright. |
+| `I1`–`I5` | From inside the private network: PostgreSQL, Orthanc and OHIF all report `connected`, and the payload leaks no internal hostname, port or credential. |
+| `C1`–`C4` | The public client-config exposes only a same-origin `/viewer` path — no `orthancUrl`, no private address. |
+| `W1`–`W2` | Authenticated clinical data (worklist, patients) is served. |
+| `D1`–`D3` | DICOMweb QIDO-RS and WADO-RS work through the GeraldOS proxy, with no wildcard CORS on clinical data. |
+| `V1`–`V9` | The `/viewer` mount serves OHIF, is frameable only by the app origin, ships the same-origin datasource config, renders the study deep link, and rejects path traversal. |
+| `F1`–`F2` | A foreign-origin mutation is rejected `403 CSRF_REJECTED`; a legitimate same-origin mutation is not. |
+| `U1`–`U2` | An authenticated DICOM upload reaches Orthanc and the study becomes queryable via DICOMweb. Uses `dicom-samples/CT001_001.dcm`; pass `--skip-upload` to omit. |
+| `X1`–`X4` | Logout redirects to the public origin, clears the cookie, and the session stops authorising API access. |
+
+The script ships inside the production image (`scripts/` is copied by the
+`Dockerfile`), so it can also be run from the **Render Shell** against loopback,
+which is the fastest way to triage a failed deploy without exposing anything:
+
+```bash
+APP_URL=http://localhost:${PORT} SESSION_TOKEN=… node scripts/verify-deployment.mjs --skip-upload
+```
+
+(`dicom-samples/` is excluded by `.dockerignore`, so `U1`/`U2` report `SKIP`
+there rather than failing — run those from a workstation checkout.)
+
+Run it immediately after the first deploy, and after any change to `render.yaml`,
+the Dockerfiles, `ohif-config/app-config.js` or the proxy routes.
+
+Credentials are read from the environment only; the password, session token and
+`Set-Cookie` values are never printed — output is status codes and assertions.
